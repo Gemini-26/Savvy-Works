@@ -1,0 +1,27 @@
+/* ── Tailwind v4 entry point ─────────────────────────────────────────────── */
+@import "tailwindcss";
+
+/* ── Global resets that Tailwind preflight doesn't cover ────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: #f9fafb;   /* gray-50 */
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+               'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Remove text-align: center that the old template applied to #root */
+#root {
+  text-align: left;
+  width: 100%;
+  max-width: 100%;
+}
+
+/* Utility: hide scrollbar on overflow-x navs */
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
