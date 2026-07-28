@@ -59,6 +59,8 @@ export default function AppRoutes({ session }) {
                 element={route.element}
               />
             ))}
+
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         )}
       </Routes>

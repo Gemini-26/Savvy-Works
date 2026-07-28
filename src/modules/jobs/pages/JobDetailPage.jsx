@@ -10,6 +10,7 @@ import { createInvoiceFromJob, findInvoiceForJob } from '../../finance/services/
 import { fetchJobActivity } from '../../../shared/services/activityService'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 import { formatDateTime } from '../../../shared/utils/formatDate'
+import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { useItems } from '../../quotes/hooks/useItems'
 import LineItemsEditor from '../../quotes/components/LineItemsEditor'
 
@@ -86,6 +87,7 @@ export default function JobDetailPage() {
   const { customers } = useCustomers()
   const { profile: currentProfile, isAdmin } = useCurrentUser()
   const { items: catalogue } = useItems()
+  const { profiles } = useProfiles()
 
   const [editing,       setEditing]       = useState(false)
   const [loading,       setLoading]       = useState(true)
@@ -272,6 +274,7 @@ export default function JobDetailPage() {
     return {
       job_ref:            d.job_ref            ?? '',
       quote_id:           d.quote_id           ?? null,
+      assigned_to:        d.assigned_to        ?? '',
       status:             toDisplayStatus(d.status),
       job_type:           d.job_type           ?? 'New Job',
       priority:           toDisplayPriority(d.priority),
@@ -325,6 +328,7 @@ export default function JobDetailPage() {
         status:      toDbStatus(form.status),
         priority:    form.priority.toLowerCase(),
         customer_id: form.customer_id || null,
+        assigned_to: form.assigned_to || null,
         start_date:  form.start_date   || null,
         complete_by: form.complete_by  || null,
         scheduled_for: form.scheduled_for || null,
@@ -804,6 +808,18 @@ export default function JobDetailPage() {
                   ? <p className="py-1.5 text-sm text-gray-800">{form.job_type || '—'}</p>
                   : <select value={form.job_type} onChange={e => set('job_type', e.target.value)} className={inputCls}>
                       {JOB_TYPES.map(t => <option key={t}>{t}</option>)}
+                    </select>
+                }
+              </Field>
+
+              <Field label="Assigned To">
+                {ro
+                  ? <p className="py-1.5 text-sm text-gray-800">
+                      {profiles.find(p => p.id === form.assigned_to)?.full_name || '—'}
+                    </p>
+                  : <select value={form.assigned_to} onChange={e => set('assigned_to', e.target.value)} className={inputCls}>
+                      <option value="">— Unassigned —</option>
+                      {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
                     </select>
                 }
               </Field>

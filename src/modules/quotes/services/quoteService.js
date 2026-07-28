@@ -124,7 +124,7 @@ export async function deleteQuote(id) {
   if (error) throw error
 }
 
-// Converts an accepted quote into a Job, carrying over customer/site/title.
+// Converts an accepted quote into a Job, carrying over customer/site/title/technician.
 export async function convertQuoteToJob(quote) {
   const job_ref = await nextJobNumber()
 
@@ -134,6 +134,7 @@ export async function convertQuoteToJob(quote) {
       job_ref,
       quote_id: quote.id,
       customer_id: quote.customer_id,
+      assigned_to: quote.assigned_to || null,
       title: quote.title,
       status: 'unassigned',
       priority: 'medium',
