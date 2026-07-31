@@ -13,8 +13,8 @@ import { formatDateTime } from '../../../shared/utils/formatDate'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { useItems } from '../../quotes/hooks/useItems'
 import LineItemsEditor from '../../quotes/components/LineItemsEditor'
+import { JOB_TYPES } from '../../../shared/constants/jobTypes'
 
-const JOB_TYPES  = ['New Job', 'Maintenance', 'Emergency', 'Inspection', 'Installation', 'Repair', 'Other']
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 const STATUSES   = ['New', 'Assigned', 'Scheduled', 'In Progress', 'On Hold', 'Pending Confirmation', 'Completed', 'Invoiced', 'Cancelled']
 const COUNTRIES  = ['South Africa', 'Zimbabwe', 'Botswana', 'Namibia', 'Lesotho', 'Eswatini', 'Mozambique']
@@ -310,6 +310,8 @@ export default function JobDetailPage() {
       materials_used:     d.materials_used     ?? '',
       sign_off_name:      d.sign_off_name      ?? '',
       sign_off_signature: d.sign_off_signature ?? '',
+      sign_off_customer_name: d.sign_off_customer_name ?? '',
+      payment_type:       d.payment_type       ?? '',
       completed_at:       d.completed_at       ?? '',
     }
   }
@@ -601,23 +603,42 @@ export default function JobDetailPage() {
           ) : photos.length === 0 ? (
             <p className="text-sm text-gray-400 italic">No photos uploaded for this job yet.</p>
           ) : (
-            <div className="grid grid-cols-4 gap-4">
-              {photos.map(photo => (
-                <div key={photo.id} className="group relative border border-gray-100 rounded-lg overflow-hidden">
-                  {photo.url
-                    ? <img src={photo.url} alt={photo.file_name} className="w-full h-28 object-cover" />
-                    : <div className="w-full h-28 bg-gray-50 flex items-center justify-center text-xs text-gray-400">No preview</div>
-                  }
-                  <button
-                    type="button"
-                    onClick={() => handlePhotoDelete(photo)}
-                    className="absolute top-1 right-1 bg-red-600 text-white text-xs w-5 h-5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    ×
-                  </button>
-                  <p className="text-xs text-gray-500 px-1.5 py-1 truncate">{photo.file_name}</p>
-                </div>
-              ))}
+            <div className="space-y-6">
+              {['before', 'after'].map(stage => {
+                const group = photos.filter(p => (p.stage || 'before') === stage)
+                if (group.length === 0) return null
+                return (
+                  <div key={stage}>
+                    <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-2">
+                      {stage === 'before' ? 'Before Job' : 'After Job'}
+                    </h3>
+                    <div className="grid grid-cols-4 gap-4">
+                      {group.map(photo => {
+                        const isAdminPhoto = photo.profiles?.role === 'admin'
+                        return (
+                          <div key={photo.id} className="group relative border border-gray-100 rounded-lg overflow-hidden">
+                            {photo.url
+                              ? <img src={photo.url} alt={photo.file_name} className="w-full h-28 object-cover" />
+                              : <div className="w-full h-28 bg-gray-50 flex items-center justify-center text-xs text-gray-400">No preview</div>
+                            }
+                            <span className={`absolute bottom-9 left-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${isAdminPhoto ? 'bg-purple-600/90 text-white' : 'bg-blue-600/90 text-white'}`}>
+                              {isAdminPhoto ? 'Admin' : 'Technician'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handlePhotoDelete(photo)}
+                              className="absolute top-1 right-1 bg-red-600 text-white text-xs w-5 h-5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              ×
+                            </button>
+                            <p className="text-xs text-gray-500 px-1.5 py-1 truncate">{photo.file_name}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>
@@ -630,6 +651,12 @@ export default function JobDetailPage() {
           <div className="max-w-md space-y-4">
             <Field label="Signed Off By">
               <p className="py-1.5 text-sm text-gray-800 font-medium">{form.sign_off_name || '—'}</p>
+            </Field>
+            <Field label="Customer Name">
+              <p className="py-1.5 text-sm text-gray-800 font-medium">{form.sign_off_customer_name || '—'}</p>
+            </Field>
+            <Field label="Payment Type">
+              <p className="py-1.5 text-sm text-gray-800 font-medium">{form.payment_type || '—'}</p>
             </Field>
             <Field label="Date &amp; Time">
               <p className="py-1.5 text-sm text-gray-800">

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { completeJob } from '../services/jobService'
 import SignaturePad from '../../../shared/components/SignaturePad'
+import { PAYMENT_TYPES } from '../../../shared/constants/paymentTypes'
 
 const inputCls = 'w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 
@@ -17,11 +18,14 @@ function Field({ label, required, children }) {
 
 // signOffName comes from the logged-in profile, not free text — the
 // sign-off is a record of who actually completed the job, so it can't
-// be typed as someone else.
+// be typed as someone else. sign_off_customer_name is separate — it's
+// the customer's own typed name/surname, captured alongside their signature.
 export default function CompleteJobModal({ jobId, signOffName, onClose, onCompleted }) {
   const [step, setStep] = useState('details')
   const [form, setForm] = useState({ completion_notes: '', materials_used: '' })
   const [signature, setSignature] = useState(null)
+  const [customerName, setCustomerName] = useState('')
+  const [paymentType, setPaymentType] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
@@ -35,15 +39,34 @@ export default function CompleteJobModal({ jobId, signOffName, onClose, onComple
     setStep('signature')
   }
 
-  async function handleFinish() {
+  function handleSignatureNext() {
+    if (!customerName.trim()) {
+      setError('Please enter the customer’s name and surname.')
+      return
+    }
     if (!signature) {
-      setError('Please sign before completing the job.')
+      setError('Please sign before continuing.')
+      return
+    }
+    setError(null)
+    setStep('payment')
+  }
+
+  async function handleFinish() {
+    if (!paymentType) {
+      setError('Please select a payment type.')
       return
     }
     setSaving(true)
     setError(null)
     try {
-      await completeJob(jobId, { ...form, sign_off_name: signOffName, sign_off_signature: signature })
+      await completeJob(jobId, {
+        ...form,
+        sign_off_name: signOffName,
+        sign_off_signature: signature,
+        sign_off_customer_name: customerName.trim(),
+        payment_type: paymentType,
+      })
       onCompleted()
       onClose()
     } catch (err) {
@@ -53,13 +76,13 @@ export default function CompleteJobModal({ jobId, signOffName, onClose, onComple
     }
   }
 
+  const stepTitles = { details: 'Complete Job', signature: 'Sign Off', payment: 'Payment Type' }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-900">
-            {step === 'details' ? 'Complete Job' : 'Sign Off'}
-          </h2>
+          <h2 className="text-base font-bold text-gray-900">{stepTitles[step]}</h2>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
@@ -67,7 +90,7 @@ export default function CompleteJobModal({ jobId, signOffName, onClose, onComple
           <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded">{error}</div>
         )}
 
-        {step === 'details' ? (
+        {step === 'details' && (
           <form onSubmit={handleNext} className="px-6 py-5 space-y-4">
             <Field label="Completion Notes">
               <textarea
@@ -109,13 +132,56 @@ export default function CompleteJobModal({ jobId, signOffName, onClose, onComple
               </button>
             </div>
           </form>
-        ) : (
+        )}
+
+        {step === 'signature' && (
           <div className="px-6 py-5 space-y-4">
             <p className="text-sm text-gray-600">
-              <span className="font-semibold">{signOffName}</span>, please sign below to confirm the job is complete.
+              Please confirm the job is complete and sign below.
             </p>
 
+            <Field label="Customer Name & Surname" required>
+              <input
+                value={customerName}
+                onChange={e => setCustomerName(e.target.value)}
+                placeholder="e.g. Jane Smith"
+                className={inputCls}
+              />
+            </Field>
+
             <SignaturePad onChange={setSignature} />
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleSignatureNext}
+                className="flex-1 bg-blue-600 text-white py-2 rounded text-sm font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Next →
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep('details')}
+                className="px-4 py-2 rounded text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                ← Back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {step === 'payment' && (
+          <div className="px-6 py-5 space-y-4">
+            <p className="text-sm text-gray-600">
+              <span className="font-semibold">{customerName}</span>, please select your preferred payment type.
+            </p>
+
+            <Field label="Payment Type" required>
+              <select value={paymentType} onChange={e => setPaymentType(e.target.value)} className={inputCls}>
+                <option value="">— Select Payment Type —</option>
+                {PAYMENT_TYPES.map(t => <option key={t}>{t}</option>)}
+              </select>
+            </Field>
 
             <div className="flex gap-3 pt-2">
               <button
@@ -128,7 +194,7 @@ export default function CompleteJobModal({ jobId, signOffName, onClose, onComple
               </button>
               <button
                 type="button"
-                onClick={() => setStep('details')}
+                onClick={() => setStep('signature')}
                 className="px-4 py-2 rounded text-sm font-medium border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
               >
                 ← Back

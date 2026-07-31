@@ -106,13 +106,15 @@ export async function deleteJob(id) {
 
 // Technician-side completion — marks the job ready for admin sign-off,
 // NOT fully completed yet. Admin must confirmJobComplete() to finalize.
-export async function completeJob(id, { completion_notes, materials_used, sign_off_name, sign_off_signature }) {
+export async function completeJob(id, { completion_notes, materials_used, sign_off_name, sign_off_signature, sign_off_customer_name, payment_type }) {
   await updateJob(id, {
     status: 'pending_confirmation',
     completion_notes: completion_notes || null,
     materials_used:   materials_used || null,
     sign_off_name,
     sign_off_signature: sign_off_signature || null,
+    sign_off_customer_name: sign_off_customer_name || null,
+    payment_type: payment_type || null,
     completed_at: new Date().toISOString(),
   })
 
@@ -174,7 +176,7 @@ export async function updateJobItems(jobId, items) {
 export async function fetchJobPhotos(jobId) {
   const { data, error } = await supabase
     .from('job_photos')
-    .select('*, profiles(full_name)')
+    .select('*, profiles(full_name, role)')
     .eq('job_id', jobId)
     .order('created_at', { ascending: false })
 
@@ -191,7 +193,7 @@ export async function fetchJobPhotos(jobId) {
   )
 }
 
-export async function uploadJobPhoto(jobId, file) {
+export async function uploadJobPhoto(jobId, file, stage = 'before') {
   const companyId = await getMyCompanyId()
   const profile = await getCurrentProfile()
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
@@ -211,6 +213,7 @@ export async function uploadJobPhoto(jobId, file) {
       storage_path: storagePath,
       file_name: file.name,
       uploaded_by: profile?.id || null,
+      stage,
     }])
 
   if (insertError) throw insertError
