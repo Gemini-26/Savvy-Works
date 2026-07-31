@@ -8,8 +8,9 @@ import AssetHistoryModal from '../components/AssetHistoryModal'
 import EditAssetModal from '../components/EditAssetModal'
 import TechnicianAssetsPanel from '../components/TechnicianAssetsPanel'
 import PinDialog from '../components/PinDialog'
+import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import {
-  fetchAssets, fetchTechnicians, fetchAssetCategories, assignAsset,
+  fetchAssets, fetchTechnicians, fetchAssetCategories, assignAsset, deleteAsset,
   fetchStoreroomRequests, approveRequest, denyRequest, confirmHandoverPin,
   fetchStoreroomReturns, approveReturn, denyReturn, confirmReturnHandover,
 } from '../services/assetService'
@@ -39,7 +40,7 @@ function AssignDialog({ asset, technicians, onCancel, onConfirm, saving }) {
   )
 }
 
-function RowMenu({ onHistory, onEdit }) {
+function RowMenu({ onHistory, onEdit, onDelete }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="relative inline-block">
@@ -49,9 +50,10 @@ function RowMenu({ onHistory, onEdit }) {
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1">
-            <button onClick={() => { setOpen(false); onEdit() }} className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">Edit</button>
-            <button onClick={() => { setOpen(false); onHistory() }} className="w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">View history</button>
+          <div className="absolute right-0 mt-1 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-20 py-1 flex flex-col">
+            <button onClick={() => { setOpen(false); onEdit() }} className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">Edit</button>
+            <button onClick={() => { setOpen(false); onHistory() }} className="block w-full text-left px-3 py-2 text-xs text-gray-700 hover:bg-gray-50">View history</button>
+            <button onClick={() => { setOpen(false); onDelete() }} className="block w-full text-left px-3 py-2 text-xs text-red-600 hover:bg-red-50">Delete</button>
           </div>
         </>
       )}
@@ -74,6 +76,7 @@ function StoreroomTab() {
   const [assigningAsset, setAssigningAsset] = useState(null)
   const [historyAsset, setHistoryAsset] = useState(null)
   const [editingAsset, setEditingAsset] = useState(null)
+  const [deletingAsset, setDeletingAsset] = useState(null)
   const [pinRequest, setPinRequest] = useState(null)
   const [pinReturn, setPinReturn] = useState(null)
   const [pinError, setPinError] = useState(null)
@@ -121,6 +124,13 @@ function StoreroomTab() {
     } finally {
       setBusyId(null)
     }
+  }
+
+  async function handleDelete() {
+    await withBusy(deletingAsset.id, async () => {
+      await deleteAsset(deletingAsset.id)
+      setDeletingAsset(null)
+    })
   }
 
   async function handleAssign(technicianId) {
@@ -278,7 +288,7 @@ function StoreroomTab() {
                       {!asset.holder_id && (
                         <button disabled={busyId === asset.id} onClick={() => setAssigningAsset(asset)} className="text-xs font-medium text-blue-600">Assign</button>
                       )}
-                      <RowMenu onEdit={() => setEditingAsset(asset)} onHistory={() => setHistoryAsset(asset)} />
+                      <RowMenu onEdit={() => setEditingAsset(asset)} onHistory={() => setHistoryAsset(asset)} onDelete={() => setDeletingAsset(asset)} />
                     </div>
                   </td>
                 </tr>
@@ -294,6 +304,19 @@ function StoreroomTab() {
       )}
 
       {historyAsset && <AssetHistoryModal asset={historyAsset} onClose={() => setHistoryAsset(null)} />}
+
+      {deletingAsset && (
+        <ConfirmDialog
+          title={`Delete ${deletingAsset.name}?`}
+          message={deletingAsset.holder_id
+            ? 'This will deactivate the asset and mark it as returned. Its history will be kept.'
+            : 'This will deactivate the asset. Its history will be kept.'}
+          confirmLabel="Delete"
+          busy={busyId === deletingAsset.id}
+          onConfirm={handleDelete}
+          onCancel={() => setDeletingAsset(null)}
+        />
+      )}
 
       {editingAsset && (
         <EditAssetModal asset={editingAsset} categories={categories}

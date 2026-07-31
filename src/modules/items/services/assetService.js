@@ -45,6 +45,28 @@ export async function updateAsset(id, updates) {
   if (!data || data.length === 0) throw new Error('Update failed — no rows were changed. Check your permissions.')
 }
 
+// Soft-delete: assets carry a checkout/request history that matters for
+// audit purposes, so "delete" deactivates rather than hard-deletes the row
+// (same `active` flag already used to filter storeroom/inventory lists).
+export async function deleteAsset(id) {
+  const asset = await fetchAsset(id)
+
+  const { data, error } = await supabase
+    .from('assets')
+    .update({ active: false, holder_id: null, status: 'warehouse', since: null, due_back: null })
+    .eq('id', id)
+    .select()
+  if (error) throw error
+  if (!data || data.length === 0) throw new Error('Delete failed — no rows were changed. Check your permissions.')
+
+  if (asset.holder_id) {
+    await supabase.from('asset_checkout_log').insert([{
+      asset_id: id, action: 'returned', from_id: asset.holder_id,
+      condition_in: asset.condition, comment_in: 'Asset deleted/deactivated while checked out',
+    }])
+  }
+}
+
 export async function fetchTechnicians() {
   const { data, error } = await supabase
     .from('profiles')

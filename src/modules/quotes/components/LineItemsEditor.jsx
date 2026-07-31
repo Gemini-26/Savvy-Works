@@ -11,8 +11,15 @@ export default function LineItemsEditor({ items, catalogue, onChange }) {
     onChange(items.filter((_, idx) => idx !== i))
   }
 
+  const NUMERIC_FIELDS = ['quantity', 'unit_price', 'tax_rate']
+
   function updateRow(i, field, value) {
-    const next = items.map((it, idx) => idx === i ? { ...it, [field]: value } : it)
+    let v = value
+    if (NUMERIC_FIELDS.includes(field)) {
+      const n = Number(value)
+      if (!Number.isNaN(n) && n < 0) v = 0
+    }
+    const next = items.map((it, idx) => idx === i ? { ...it, [field]: v } : it)
     onChange(next)
   }
 
