@@ -16,6 +16,7 @@ export default function JobDetailPage({ profile }) {
   const [busy, setBusy] = useState(false)
   const [showComplete, setShowComplete] = useState(false)
   const [confirmClockOut, setConfirmClockOut] = useState(false)
+  const [photoTab, setPhotoTab] = useState('before')
   const fileRef = useRef(null)
 
   async function load() {
@@ -58,7 +59,7 @@ export default function JobDetailPage({ profile }) {
     if (!file) return
     setBusy(true)
     try {
-      await uploadJobPhoto(appt.job_id, file)
+      await uploadJobPhoto(appt.job_id, file, photoTab)
       setPhotos(await fetchJobPhotos(appt.job_id))
     } finally {
       setBusy(false)
@@ -85,6 +86,10 @@ export default function JobDetailPage({ profile }) {
   const isPendingConfirmation = job?.status === 'pending_confirmation'
   const isCompleted = job?.status === 'completed' || job?.status === 'invoiced'
   const canManagePhotos = !isCompleted
+  const beforePhotos = photos.filter(p => (p.stage || 'before') === 'before')
+  const afterPhotos = photos.filter(p => p.stage === 'after')
+  const hasBeforeAfter = beforePhotos.length > 0 && afterPhotos.length > 0
+  const visiblePhotos = photoTab === 'before' ? beforePhotos : afterPhotos
 
   return (
     <div className="pb-6">
@@ -132,11 +137,22 @@ export default function JobDetailPage({ profile }) {
                 Clock In
               </button>
             ) : (
-              <button disabled={busy} onClick={() => setShowComplete(true)} className="flex-1 bg-green-600 text-white text-sm font-semibold py-2.5 rounded-lg disabled:opacity-50">
+              <button
+                disabled={busy || !hasBeforeAfter}
+                title={!hasBeforeAfter ? 'Upload at least one Before and one After photo to complete the job' : undefined}
+                onClick={() => setShowComplete(true)}
+                className="flex-1 bg-green-600 text-white text-sm font-semibold py-2.5 rounded-lg disabled:opacity-50"
+              >
                 Complete Job
               </button>
             )}
           </div>
+        )}
+
+        {isAccepted && !isCompleted && !isPendingConfirmation && !hasBeforeAfter && (
+          <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            You must upload at least one "Before Job" and one "After Job" photo before you can complete this job.
+          </p>
         )}
 
         {isPendingConfirmation && (
@@ -174,32 +190,54 @@ export default function JobDetailPage({ profile }) {
         )}
 
         <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Photos</p>
-            {canManagePhotos && (
-              <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 text-xs font-medium text-blue-600">
-                <Camera size={14} /> Add
-              </button>
-            )}
-            <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleUpload} />
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Photos</p>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPhotoTab('before')}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg border ${photoTab === 'before' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}
+            >
+              Before Job {beforePhotos.length > 0 && `(${beforePhotos.length})`}
+            </button>
+            <button
+              onClick={() => setPhotoTab('after')}
+              className={`flex-1 text-xs font-semibold py-1.5 rounded-lg border ${photoTab === 'after' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200'}`}
+            >
+              After Job {afterPhotos.length > 0 && `(${afterPhotos.length})`}
+            </button>
           </div>
-          {photos.length === 0 ? (
-            <p className="text-sm text-gray-400">No photos yet.</p>
+
+          {canManagePhotos && (
+            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 text-xs font-medium text-blue-600">
+              <Camera size={14} /> Add {photoTab === 'before' ? 'Before' : 'After'} Photo
+            </button>
+          )}
+          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleUpload} />
+
+          {visiblePhotos.length === 0 ? (
+            <p className="text-sm text-gray-400">No {photoTab} photos yet.</p>
           ) : (
             <div className="grid grid-cols-3 gap-2">
-              {photos.map(photo => (
-                <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
-                  {photo.url && <img src={photo.url} alt={photo.file_name} className="w-full h-full object-cover" />}
-                  {canManagePhotos && photo.uploaded_by === profile.id && (
-                    <button
-                      onClick={() => handleDeletePhoto(photo)}
-                      className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  )}
-                </div>
-              ))}
+              {visiblePhotos.map(photo => {
+                const isAdminPhoto = photo.profiles?.role === 'admin'
+                const isOwnPhoto = photo.uploaded_by === profile.id
+                return (
+                  <div key={photo.id} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
+                    {photo.url && <img src={photo.url} alt={photo.file_name} className="w-full h-full object-cover" />}
+                    <span className={`absolute bottom-1 left-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${isAdminPhoto ? 'bg-purple-600/90 text-white' : 'bg-blue-600/90 text-white'}`}>
+                      {isAdminPhoto ? 'Admin' : 'Technician'}
+                    </span>
+                    {canManagePhotos && isOwnPhoto && (
+                      <button
+                        onClick={() => handleDeletePhoto(photo)}
+                        className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           )}
         </div>

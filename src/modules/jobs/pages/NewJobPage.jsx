@@ -4,9 +4,9 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { createJob } from '../services/jobService'
 import { supabase } from '../../../lib/supabase'
 import { CUSTOMER_TYPE_LABELS } from '../../../shared/constants/customerTypes'
+import { JOB_TYPES } from '../../../shared/constants/jobTypes'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 
-const JOB_TYPES = ['New Job', 'Maintenance', 'Emergency', 'Inspection', 'Installation', 'Repair', 'Other']
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 const COUNTRIES  = ['South Africa', 'Zimbabwe', 'Botswana', 'Namibia', 'Lesotho', 'Eswatini', 'Mozambique']
 
