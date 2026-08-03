@@ -21,7 +21,7 @@ function drawLogo(doc, x, y) {
   doc.text('S', x + 16, y + 22, { align: 'center' })
 }
 
-export function downloadInvoicePdf(invoice, lineItems, technicians) {
+export function buildInvoicePdf(invoice, lineItems, technicians) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   let y = MARGIN
 
@@ -217,5 +217,16 @@ export function downloadInvoicePdf(invoice, lineItems, technicians) {
     doc.text(invoice.terms, MARGIN, y, { maxWidth: CONTENT_W })
   }
 
-  doc.save(`${invoice.invoice_ref || 'invoice'}.pdf`)
+  return doc
+}
+
+export function downloadInvoicePdf(invoice, lineItems, technicians) {
+  buildInvoicePdf(invoice, lineItems, technicians).save(`${invoice.invoice_ref || 'invoice'}.pdf`)
+}
+
+// Opens the PDF in a new tab for on-screen review before the user commits
+// to downloading it — same document, just `output('bloburl')` instead of `save()`.
+export function previewInvoicePdf(invoice, lineItems, technicians) {
+  const doc = buildInvoicePdf(invoice, lineItems, technicians)
+  window.open(doc.output('bloburl'), '_blank')
 }

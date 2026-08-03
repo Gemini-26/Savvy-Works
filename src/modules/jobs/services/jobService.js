@@ -6,6 +6,7 @@ import { archiveRecord } from '../../../shared/services/archiveService'
 
 const PAGE_SIZE = 50
 const PHOTO_BUCKET = 'job-photos'
+const DOCUMENT_BUCKET = 'job-documents'
 
 export async function fetchJobs(statusFilter, page = 0, search = '') {
   let query = supabase
@@ -228,4 +229,62 @@ export async function deleteJobPhoto(photo) {
 
   const profile = await getCurrentProfile().catch(() => null)
   await logActivity(photo.job_id, 'photo_deleted', `${profile?.full_name || 'Someone'} deleted a photo (${photo.file_name})`).catch(() => {})
+}
+
+export async function fetchJobDocuments(jobId) {
+  const { data, error } = await supabase
+    .from('job_documents')
+    .select('*, profiles(full_name, role)')
+    .eq('job_id', jobId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  return Promise.all(
+    data.map(async doc => {
+      const { data: signed } = await supabase
+        .storage
+        .from(DOCUMENT_BUCKET)
+        .createSignedUrl(doc.storage_path, 3600)
+      return { ...doc, url: signed?.signedUrl || null }
+    })
+  )
+}
+
+export async function uploadJobDocument(jobId, file) {
+  const companyId = await getMyCompanyId()
+  const profile = await getCurrentProfile()
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const storagePath = `${companyId}/${jobId}/${Date.now()}_${safeName}`
+
+  const { error: uploadError } = await supabase
+    .storage
+    .from(DOCUMENT_BUCKET)
+    .upload(storagePath, file)
+
+  if (uploadError) throw uploadError
+
+  const { error: insertError } = await supabase
+    .from('job_documents')
+    .insert([{
+      job_id: jobId,
+      storage_path: storagePath,
+      file_name: file.name,
+      file_size: file.size,
+      mime_type: file.type || null,
+      uploaded_by: profile?.id || null,
+    }])
+
+  if (insertError) throw insertError
+
+  await logActivity(jobId, 'document_uploaded', `${profile?.full_name || 'Someone'} uploaded a document (${file.name})`).catch(() => {})
+}
+
+export async function deleteJobDocument(doc) {
+  await supabase.storage.from(DOCUMENT_BUCKET).remove([doc.storage_path])
+  const { error } = await supabase.from('job_documents').delete().eq('id', doc.id)
+  if (error) throw error
+
+  const profile = await getCurrentProfile().catch(() => null)
+  await logActivity(doc.job_id, 'document_deleted', `${profile?.full_name || 'Someone'} deleted a document (${doc.file_name})`).catch(() => {})
 }

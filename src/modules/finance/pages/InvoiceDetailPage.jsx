@@ -6,9 +6,10 @@ import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { useItems } from '../../quotes/hooks/useItems'
 import LineItemsEditor from '../../quotes/components/LineItemsEditor'
 import { fetchJobTechnicianSummary } from '../../planner/services/appointmentService'
-import { downloadInvoicePdf } from '../utils/invoicePdf'
+import { downloadInvoicePdf, previewInvoicePdf } from '../utils/invoicePdf'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
+import { Eye } from 'lucide-react'
 
 function formatDateTime(iso) {
   if (!iso) return null
@@ -154,6 +155,11 @@ export default function InvoiceDetailPage() {
               <button type="button" onClick={() => setEditing(true)}
                 className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-700 transition-colors">
                 ✏️ Edit
+              </button>
+              <button type="button" onClick={() => previewInvoicePdf(form, lineItems, technicians)}
+                title="View Invoice"
+                className="flex items-center justify-center bg-gray-100 text-gray-700 px-3 py-2 rounded text-sm font-semibold hover:bg-gray-200 transition-colors">
+                <Eye size={16} />
               </button>
               <button type="button" onClick={() => downloadInvoicePdf(form, lineItems, technicians)}
                 className="bg-gray-700 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-gray-800 transition-colors">
