@@ -1,7 +1,7 @@
 import { useState, useEffect, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
-import { fetchJob, updateJob, deleteJob, fetchJobPhotos, uploadJobPhoto, deleteJobPhoto, confirmJobComplete, fetchJobItems, updateJobItems } from '../services/jobService'
+import { fetchJob, updateJob, deleteJob, fetchJobPhotos, uploadJobPhoto, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument, confirmJobComplete, fetchJobItems, updateJobItems } from '../services/jobService'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { fetchAppointmentsForJob, clockInAssignment, clockOutAssignment } from '../../planner/services/appointmentService'
 import AppointmentModal from '../../planner/components/AppointmentModal'
@@ -46,6 +46,8 @@ const ACTIVITY_DOT_COLORS = {
   clocked_out:                'bg-purple-500',
   photo_uploaded:             'bg-teal-500',
   photo_deleted:              'bg-red-400',
+  document_uploaded:          'bg-teal-500',
+  document_deleted:           'bg-red-400',
   job_completed_by_technician: 'bg-amber-500',
   job_confirmed_complete:     'bg-green-500',
 }
@@ -73,6 +75,13 @@ function toDbStatus(display) {
 function toDisplayPriority(raw) {
   if (!raw) return 'Medium'
   return raw.charAt(0).toUpperCase() + raw.slice(1)
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function formatDateInput(val) {
@@ -108,6 +117,9 @@ export default function JobDetailPage() {
   const [photos,        setPhotos]        = useState([])
   const [photosLoading, setPhotosLoading] = useState(false)
   const [photoUploading, setPhotoUploading] = useState(false)
+  const [documents,        setDocuments]        = useState([])
+  const [documentsLoading, setDocumentsLoading] = useState(false)
+  const [documentUploading, setDocumentUploading] = useState(false)
   const [activity,      setActivity]      = useState([])
   const [activityLoading, setActivityLoading] = useState(false)
   const [jobItems,      setJobItems]      = useState([])
@@ -123,7 +135,7 @@ export default function JobDetailPage() {
 
   useEffect(() => {
     if (activeTab === 'Appointments') loadAppointments()
-    if (activeTab === 'Attachments') loadPhotos()
+    if (activeTab === 'Attachments') { loadPhotos(); loadDocuments() }
     if (activeTab === 'Activity') loadActivity()
     if (activeTab === 'Materials') loadJobItems()
   }, [activeTab, id])
@@ -226,6 +238,42 @@ export default function JobDetailPage() {
       setPhotos(prev => prev.filter(p => p.id !== photo.id))
     } catch (err) {
       setError(err.message || 'Failed to delete photo')
+    }
+  }
+
+  async function loadDocuments() {
+    setDocumentsLoading(true)
+    try {
+      const data = await fetchJobDocuments(id)
+      setDocuments(data)
+    } catch (_) {
+      // silently fail — attachments tab will show empty
+    } finally {
+      setDocumentsLoading(false)
+    }
+  }
+
+  async function handleDocumentSelect(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setDocumentUploading(true)
+    try {
+      await uploadJobDocument(id, file)
+      await loadDocuments()
+    } catch (err) {
+      setError(err.message || 'Failed to upload document')
+    } finally {
+      setDocumentUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  async function handleDocumentDelete(doc) {
+    try {
+      await deleteJobDocument(doc)
+      setDocuments(prev => prev.filter(d => d.id !== doc.id))
+    } catch (err) {
+      setError(err.message || 'Failed to delete document')
     }
   }
 
@@ -635,6 +683,51 @@ export default function JobDetailPage() {
                           </div>
                         )
                       })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mt-8 mb-4 pt-6 border-t border-gray-100">
+            <h2 className="text-sm font-bold text-gray-700">Documents</h2>
+            <label className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-semibold hover:bg-blue-700 transition-colors cursor-pointer">
+              {documentUploading ? 'Uploading…' : '+ Upload Document'}
+              <input type="file" className="hidden" disabled={documentUploading} onChange={handleDocumentSelect} />
+            </label>
+          </div>
+          {documentsLoading ? (
+            <p className="text-sm text-gray-400">Loading documents…</p>
+          ) : documents.length === 0 ? (
+            <p className="text-sm text-gray-400 italic">No documents uploaded for this job yet.</p>
+          ) : (
+            <div className="divide-y divide-gray-100 border border-gray-100 rounded-lg">
+              {documents.map(doc => {
+                const isAdminDoc = doc.profiles?.role === 'admin'
+                return (
+                  <div key={doc.id} className="flex items-center justify-between px-3 py-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg">📄</span>
+                      <div className="min-w-0">
+                        {doc.url
+                          ? <a href={doc.url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline truncate block">{doc.file_name}</a>
+                          : <p className="text-sm text-gray-800 truncate">{doc.file_name}</p>
+                        }
+                        <p className="text-xs text-gray-400">{formatFileSize(doc.file_size)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${isAdminDoc ? 'bg-purple-600/90 text-white' : 'bg-blue-600/90 text-white'}`}>
+                        {isAdminDoc ? 'Admin' : 'Technician'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleDocumentDelete(doc)}
+                        className="text-red-600 hover:text-red-700 text-xs font-semibold"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </div>
                 )

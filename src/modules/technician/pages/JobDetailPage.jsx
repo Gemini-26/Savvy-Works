@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2 } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip } from 'lucide-react'
 import { fetchMyAppointment, respondToAppointment, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
-import { fetchJobPhotos, uploadJobPhoto, deleteJobPhoto } from '../../jobs/services/jobService'
+import { fetchJobPhotos, uploadJobPhoto, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument } from '../../jobs/services/jobService'
 import CompleteJobModal from '../../jobs/components/CompleteJobModal'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import { formatDateLong, formatTime } from '../../../shared/utils/formatDate'
@@ -12,17 +12,23 @@ export default function JobDetailPage({ profile }) {
   const navigate = useNavigate()
   const [appt, setAppt] = useState(null)
   const [photos, setPhotos] = useState([])
+  const [documents, setDocuments] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const [docBusy, setDocBusy] = useState(false)
   const [showComplete, setShowComplete] = useState(false)
   const [confirmClockOut, setConfirmClockOut] = useState(false)
   const [photoTab, setPhotoTab] = useState('before')
   const fileRef = useRef(null)
+  const docFileRef = useRef(null)
 
   async function load() {
     const data = await fetchMyAppointment(id, profile.id)
     setAppt(data)
-    if (data?.job_id) setPhotos(await fetchJobPhotos(data.job_id))
+    if (data?.job_id) {
+      setPhotos(await fetchJobPhotos(data.job_id))
+      setDocuments(await fetchJobDocuments(data.job_id))
+    }
     setLoading(false)
   }
 
@@ -74,6 +80,29 @@ export default function JobDetailPage({ profile }) {
       setPhotos(await fetchJobPhotos(appt.job_id))
     } finally {
       setBusy(false)
+    }
+  }
+
+  async function handleDocUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setDocBusy(true)
+    try {
+      await uploadJobDocument(appt.job_id, file)
+      setDocuments(await fetchJobDocuments(appt.job_id))
+    } finally {
+      setDocBusy(false)
+      e.target.value = ''
+    }
+  }
+
+  async function handleDeleteDocument(doc) {
+    setDocBusy(true)
+    try {
+      await deleteJobDocument(doc)
+      setDocuments(await fetchJobDocuments(appt.job_id))
+    } finally {
+      setDocBusy(false)
     }
   }
 
@@ -233,6 +262,45 @@ export default function JobDetailPage({ profile }) {
                         className="absolute top-1 right-1 bg-black/50 text-white p-1 rounded-full"
                       >
                         <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Documents</p>
+
+          <button onClick={() => docFileRef.current?.click()} className="flex items-center gap-1 text-xs font-medium text-blue-600">
+            <Paperclip size={14} /> Add Document
+          </button>
+          <input ref={docFileRef} type="file" className="hidden" onChange={handleDocUpload} />
+
+          {documents.length === 0 ? (
+            <p className="text-sm text-gray-400">No documents yet.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {documents.map(doc => {
+                const isAdminDoc = doc.profiles?.role === 'admin'
+                const isOwnDoc = doc.uploaded_by === profile.id
+                return (
+                  <div key={doc.id} className="flex items-center justify-between bg-white border border-gray-200 rounded-lg px-3 py-2">
+                    <a href={doc.url} target="_blank" rel="noreferrer" className="text-sm text-blue-600 truncate flex-1 min-w-0">
+                      📄 {doc.file_name}
+                    </a>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ml-2 shrink-0 ${isAdminDoc ? 'bg-purple-600/90 text-white' : 'bg-blue-600/90 text-white'}`}>
+                      {isAdminDoc ? 'Admin' : 'Technician'}
+                    </span>
+                    {isOwnDoc && (
+                      <button
+                        disabled={docBusy}
+                        onClick={() => handleDeleteDocument(doc)}
+                        className="ml-2 text-gray-400 hover:text-red-600 shrink-0"
+                      >
+                        <Trash2 size={14} />
                       </button>
                     )}
                   </div>
