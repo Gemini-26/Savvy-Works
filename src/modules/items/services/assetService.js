@@ -768,7 +768,7 @@ export async function fetchAssetFullHistory(assetId) {
 export async function fetchAssetLists(listType, assignedTo) {
   let query = supabase
     .from('asset_lists')
-    .select('*, assignee:assigned_to(full_name), items:asset_list_items(id, quantity, asset:asset_id(id, name, value, condition, item_kind, holder_id, status))')
+    .select('*, assignee:assigned_to(full_name), items:asset_list_items(id, quantity, asset:asset_id(id, name, value, condition, item_kind, category_id, barcode, serial_number, holder_id, status, owner_id, owner:owner_id(id, full_name)))')
     .order('name')
   if (listType)   query = query.eq('list_type', listType)
   if (assignedTo) query = query.eq('assigned_to', assignedTo)
@@ -780,7 +780,7 @@ export async function fetchAssetLists(listType, assignedTo) {
 export async function fetchAssetList(id) {
   const { data, error } = await supabase
     .from('asset_lists')
-    .select('*, assignee:assigned_to(full_name), items:asset_list_items(id, quantity, asset:asset_id(id, name, value, item_kind, holder_id, status))')
+    .select('*, assignee:assigned_to(full_name), items:asset_list_items(id, quantity, asset:asset_id(id, name, value, condition, item_kind, category_id, barcode, serial_number, holder_id, status, owner_id, owner:owner_id(id, full_name)))')
     .eq('id', id)
     .maybeSingle()
   if (error) throw error
@@ -834,6 +834,41 @@ export async function addListItem(listId, assetId, quantity = 1) {
 export async function removeListItem(itemId) {
   const { error } = await supabase.from('asset_list_items').delete().eq('id', itemId)
   if (error) throw error
+}
+
+export async function updateListItemQuantity(itemId, quantity) {
+  const qty = Math.max(1, Number(quantity) || 1)
+  const { error } = await supabase.from('asset_list_items').update({ quantity: qty }).eq('id', itemId)
+  if (error) throw error
+}
+
+// Total value (value × quantity, across tool + inventory lists) currently
+// assigned to each technician — powers the liability figure shown on the
+// technician picker and the per-technician panel header.
+export async function fetchTechnicianLiabilityTotals() {
+  const { data, error } = await supabase
+    .from('asset_lists')
+    .select('assigned_to, items:asset_list_items(quantity, asset:asset_id(value))')
+    .not('assigned_to', 'is', null)
+  if (error) throw error
+
+  const totals = {}
+  for (const list of data || []) {
+    const sum = (list.items || []).reduce((s, i) => s + Number(i.asset?.value || 0) * (i.quantity || 1), 0)
+    totals[list.assigned_to] = (totals[list.assigned_to] || 0) + sum
+  }
+  return totals
+}
+
+// Read-only lookup so a technician can see the quantities admins have set
+// on their assigned lists, without being able to edit them.
+export async function fetchListQuantitiesForTechnician(technicianId) {
+  const { data, error } = await supabase
+    .from('asset_list_items')
+    .select('quantity, asset_id, asset_lists!inner(assigned_to)')
+    .eq('asset_lists.assigned_to', technicianId)
+  if (error) throw error
+  return Object.fromEntries((data || []).map(row => [row.asset_id, row.quantity]))
 }
 
 // Duplicating a list clones each item as a brand-new physical asset

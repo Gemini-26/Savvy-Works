@@ -1,22 +1,27 @@
 import { useEffect, useState } from 'react'
 import {
   fetchAssetLists, createAssetList, updateAssetList, deleteAssetList, duplicateAssetList,
-  removeListItem, requestRecall, fetchMyRecalls, confirmReturnPin,
+  removeListItem, requestRecall, fetchMyRecalls, confirmReturnPin, deleteAsset, updateListItemQuantity,
 } from '../services/assetService'
 import AddListItemModal from './AddListItemModal'
 import DuplicateListModal from './DuplicateListModal'
 import PinDialog from './PinDialog'
+import EditAssetModal from './EditAssetModal'
+import ConfirmDialog from '../../../shared/components/ConfirmDialog'
+import { useAssetCategories } from '../hooks/useAssetCategories'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 
 const inputCls = 'px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 
-function ListCard({ list, technicians, adminProfile, recallByAssetId, onChanged }) {
+function ListCard({ list, technicians, categories, adminProfile, recallByAssetId, onChanged }) {
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(list.name)
   const [adding, setAdding] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
   const [pinRecall, setPinRecall] = useState(null)
   const [pinError, setPinError] = useState(null)
+  const [editingItem, setEditingItem] = useState(null)
+  const [deletingItem, setDeletingItem] = useState(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
 
@@ -107,7 +112,38 @@ function ListCard({ list, technicians, adminProfile, recallByAssetId, onChanged 
     }
   }
 
-  const total = (list.items || []).reduce((s, i) => s + Number(i.asset?.value || 0), 0)
+  async function handleDeleteItem() {
+    if (!deletingItem) return
+    setBusy(true)
+    setError(null)
+    try {
+      await deleteAsset(deletingItem.asset.id)
+      await removeListItem(deletingItem.id)
+      setDeletingItem(null)
+      onChanged()
+    } catch (err) {
+      setError(err.message || 'Failed to delete item')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleQuantityChange(item, value) {
+    const qty = Math.max(1, Number(value) || 1)
+    if (qty === (item.quantity || 1)) return
+    setBusy(true)
+    setError(null)
+    try {
+      await updateListItemQuantity(item.id, qty)
+      onChanged()
+    } catch (err) {
+      setError(err.message || 'Failed to update quantity')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const liability = (list.items || []).reduce((s, i) => s + Number(i.asset?.value || 0) * (i.quantity || 1), 0)
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -121,7 +157,7 @@ function ListCard({ list, technicians, adminProfile, recallByAssetId, onChanged 
         ) : (
           <div>
             <p className="text-sm font-bold text-gray-900">{list.name}</p>
-            <p className="text-xs text-gray-500">{(list.items || []).length} item{(list.items || []).length === 1 ? '' : 's'} · {formatCurrency(total)}</p>
+            <p className="text-xs text-gray-500">{(list.items || []).length} item{(list.items || []).length === 1 ? '' : 's'} · Liability: {formatCurrency(liability)}</p>
           </div>
         )}
         <div className="flex gap-3 text-xs">
@@ -142,18 +178,32 @@ function ListCard({ list, technicians, adminProfile, recallByAssetId, onChanged 
             const recall = item.asset?.holder_id ? recallByAssetId[item.asset.id] : null
             return (
               <li key={item.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                <span className="text-gray-900">{item.asset?.name}</span>
+                <button onClick={() => setEditingItem(item)} className="text-gray-900 hover:text-blue-600 hover:underline text-left">
+                  {item.asset?.name}
+                </button>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-gray-500">{formatCurrency(item.asset?.value)}</span>
+                  <span className="text-xs text-gray-400">Owner: {item.asset?.owner?.full_name || 'Office'}</span>
+                  <span className="flex items-center gap-1 text-xs text-gray-500">
+                    Qty
+                    <input
+                      type="number" min="1" step="1" disabled={busy}
+                      defaultValue={item.quantity || 1} key={`${item.id}-${item.quantity}`}
+                      onBlur={e => handleQuantityChange(item, e.target.value)}
+                      className="w-14 px-1.5 py-0.5 text-xs rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </span>
+                  <span className="text-xs text-gray-500">{formatCurrency(item.asset?.value)} each · {formatCurrency(Number(item.asset?.value || 0) * (item.quantity || 1))} total</span>
+                  <button disabled={busy} onClick={() => setEditingItem(item)} className="text-xs font-medium text-blue-600">Edit</button>
                   {recall && recall.status === 'approved' ? (
                     <button disabled={busy} onClick={() => { setPinRecall({ item, recall }); setPinError(null) }} className="text-xs font-medium text-blue-600">Enter PIN</button>
                   ) : recall && recall.status === 'pending' ? (
                     <span className="text-xs text-amber-600">Recall pending</span>
                   ) : (
-                    <button disabled={busy} onClick={() => handleStartRemove(item)} className="text-xs text-red-600">
+                    <button disabled={busy} onClick={() => handleStartRemove(item)} className="text-xs text-gray-500">
                       {item.asset?.holder_id ? 'Recall to remove' : 'Remove'}
                     </button>
                   )}
+                  <button disabled={busy} onClick={() => setDeletingItem(item)} className="text-xs text-red-600">Delete</button>
                 </div>
               </li>
             )
@@ -175,11 +225,23 @@ function ListCard({ list, technicians, adminProfile, recallByAssetId, onChanged 
         <PinDialog title={`Confirm return of ${pinRecall.item.asset?.name}`} saving={busy} error={pinError}
           onCancel={() => setPinRecall(null)} onConfirm={pin => handleConfirmRemovePin(pinRecall.item, pin)} />
       )}
+
+      {editingItem && (
+        <EditAssetModal asset={editingItem.asset} categories={categories} technicians={technicians}
+          onClose={() => setEditingItem(null)} onSaved={() => { setEditingItem(null); onChanged() }} />
+      )}
+
+      {deletingItem && (
+        <ConfirmDialog title={`Delete ${deletingItem.asset?.name}?`}
+          message="This removes it from the storeroom and every technician's list. This can't be undone."
+          confirmLabel="Delete" busy={busy}
+          onConfirm={handleDeleteItem} onCancel={() => setDeletingItem(null)} />
+      )}
     </div>
   )
 }
 
-function ListTypeTab({ technician, listType, technicians, adminProfile }) {
+function ListTypeTab({ technician, listType, technicians, categories, adminProfile, onListsChanged }) {
   const [lists, setLists] = useState([])
   const [recallByAssetId, setRecallByAssetId] = useState({})
   const [loading, setLoading] = useState(true)
@@ -199,6 +261,7 @@ function ListTypeTab({ technician, listType, technicians, adminProfile }) {
       ])
       setLists(listData)
       setRecallByAssetId(Object.fromEntries(recalls.map(r => [r.asset_id, r])))
+      onListsChanged?.()
     } catch (err) {
       setError(err.message || 'Failed to load lists')
     } finally {
@@ -228,7 +291,7 @@ function ListTypeTab({ technician, listType, technicians, adminProfile }) {
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>}
 
       {lists.map(list => (
-        <ListCard key={list.id} list={list} technicians={technicians} adminProfile={adminProfile} recallByAssetId={recallByAssetId} onChanged={load} />
+        <ListCard key={list.id} list={list} technicians={technicians} categories={categories} adminProfile={adminProfile} recallByAssetId={recallByAssetId} onChanged={load} />
       ))}
 
       <div className="bg-white rounded-xl border border-dashed border-gray-300 p-4 flex gap-2">
@@ -245,12 +308,30 @@ function ListTypeTab({ technician, listType, technicians, adminProfile }) {
 
 export default function TechnicianAssetsPanel({ technician, technicians, adminProfile, onBack }) {
   const [subTab, setSubTab] = useState('tools')
+  const [totalLiability, setTotalLiability] = useState(null)
+  const { categories } = useAssetCategories()
+
+  async function refreshTotalLiability() {
+    try {
+      const lists = await fetchAssetLists(undefined, technician.id)
+      const total = lists.reduce((s, list) =>
+        s + (list.items || []).reduce((s2, i) => s2 + Number(i.asset?.value || 0) * (i.quantity || 1), 0), 0)
+      setTotalLiability(total)
+    } catch {
+      // leave previous total in place
+    }
+  }
+
+  useEffect(() => { refreshTotalLiability() }, [technician.id])
 
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
         <button onClick={onBack} className="text-sm text-blue-600 font-medium">← All technicians</button>
         <h2 className="text-sm font-bold text-gray-900">{technician.full_name}</h2>
+        <span className="text-xs font-medium text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+          Total liability: {totalLiability === null ? '…' : formatCurrency(totalLiability)}
+        </span>
       </div>
 
       <div className="flex gap-1 border-b border-gray-200 mb-3">
@@ -267,7 +348,7 @@ export default function TechnicianAssetsPanel({ technician, technicians, adminPr
           <p className="text-sm font-medium text-gray-700">Vehicle assignment coming soon</p>
         </div>
       ) : (
-        <ListTypeTab technician={technician} listType={subTab} technicians={technicians} adminProfile={adminProfile} />
+        <ListTypeTab technician={technician} listType={subTab} technicians={technicians} categories={categories} adminProfile={adminProfile} onListsChanged={refreshTotalLiability} />
       )}
     </div>
   )

@@ -6,7 +6,7 @@ import {
   fetchMyRequests, fetchIncomingRequests, approveRequest, denyRequest, confirmHandoverPin,
   fetchMyRecalls, fetchIncomingRecalls, requestRecall, generateReturnPin, confirmReturnPin,
   requestReturn, fetchMyReturnRequests, fetchIncomingReturns, confirmReturnHandover,
-  isOverdue,
+  isOverdue, fetchListQuantitiesForTechnician,
 } from '../../items/services/assetService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 
@@ -135,6 +135,7 @@ function ToolDetailModal({ tool, profile, onCancel, onRequestStoreroom, onReques
 export default function MyToolsPage({ profile }) {
   const [tab, setTab] = useState('storeroom')
   const [myTools, setMyTools] = useState([])
+  const [quantities, setQuantities] = useState({})
   const [lentOut, setLentOut] = useState([])
   const [incoming, setIncoming] = useState([])
   const [myRequests, setMyRequests] = useState([])
@@ -180,7 +181,7 @@ export default function MyToolsPage({ profile }) {
     setLoading(true)
     setError(null)
     try {
-      const [mine, lent, inc, reqs, recalls, incRecalls, myRet, incRet] = await Promise.all([
+      const [mine, lent, inc, reqs, recalls, incRecalls, myRet, incRet, qty] = await Promise.all([
         fetchMyTools(profile.id),
         fetchLentOutTools(profile.id),
         fetchIncomingRequests(profile.id),
@@ -189,8 +190,10 @@ export default function MyToolsPage({ profile }) {
         fetchIncomingRecalls(profile.id),
         fetchMyReturnRequests(profile.id),
         fetchIncomingReturns(profile.id),
+        fetchListQuantitiesForTechnician(profile.id),
       ])
       setMyTools(mine)
+      setQuantities(qty)
       setLentOut(lent)
       setIncoming(inc)
       setMyRequests(reqs.filter(r => r.status === 'pending' || r.status === 'approved'))
@@ -437,6 +440,7 @@ export default function MyToolsPage({ profile }) {
                     </div>
                     <p className="text-xs text-gray-500">
                       {tool.asset_categories?.name || 'Uncategorised'} · {formatCurrency(tool.value)}
+                      {quantities[tool.id] > 1 ? ` · Qty: ${quantities[tool.id]}` : ''}
                       {tool.due_back ? ` · due ${tool.due_back}` : ''}
                     </p>
                   </div>
@@ -506,7 +510,10 @@ export default function MyToolsPage({ profile }) {
                     <p className="text-sm font-semibold text-gray-900">{tool.name}</p>
                     <ConditionBadge condition={tool.condition} />
                   </div>
-                  <p className="text-xs text-gray-500">{tool.asset_categories?.name || 'Uncategorised'} · {formatCurrency(tool.value)}</p>
+                  <p className="text-xs text-gray-500">
+                    {tool.asset_categories?.name || 'Uncategorised'} · {formatCurrency(tool.value)}
+                    {quantities[tool.id] > 1 ? ` · Qty: ${quantities[tool.id]}` : ''}
+                  </p>
                 </div>
               ))}
             </div>
@@ -526,7 +533,10 @@ export default function MyToolsPage({ profile }) {
                     <p className="text-sm font-semibold text-gray-900">{tool.name}</p>
                     <ConditionBadge condition={tool.condition} />
                   </div>
-                  <p className="text-xs text-gray-500">{tool.asset_categories?.name || 'Uncategorised'} · {formatCurrency(tool.value)}</p>
+                  <p className="text-xs text-gray-500">
+                    {tool.asset_categories?.name || 'Uncategorised'} · {formatCurrency(tool.value)}
+                    {quantities[tool.id] > 1 ? ` · Qty: ${quantities[tool.id]}` : ''}
+                  </p>
                 </div>
               ))}
             </div>
@@ -687,6 +697,7 @@ export default function MyToolsPage({ profile }) {
                     </div>
                     <p className="text-xs text-gray-500">
                       {tool.asset_categories?.name || 'Uncategorised'} · {formatCurrency(tool.value)}
+                      {quantities[tool.id] > 1 ? ` · Qty: ${quantities[tool.id]}` : ''}
                       {tool.owner ? ` · owned by ${tool.owner.full_name}` : ''}
                       {tool.due_back ? ` · due ${tool.due_back}` : ''}
                     </p>

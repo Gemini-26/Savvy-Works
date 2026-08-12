@@ -4,6 +4,7 @@ import { Mail, Phone, Building2, Pencil, Clock } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchActiveShift, clockInForWork, clockOutForWork, fetchShiftHistory, onWorkShiftChange } from '../../../shared/services/workShiftService'
 import { formatTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
+import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 
 function formatDuration(ms) {
   const totalMinutes = Math.round(ms / 60000)
@@ -19,7 +20,7 @@ export default function MyProfilePage({ profile }) {
   const [busy, setBusy] = useState(false)
 
   function loadHistory(profileId) {
-    return fetchShiftHistory(profileId).then(setHistory)
+    return fetchShiftHistory(profileId, 200).then(setHistory)
   }
 
   useEffect(() => {
@@ -147,6 +148,17 @@ export default function MyProfilePage({ profile }) {
           >
             Clock In
           </button>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-3">
+        <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+          <Clock size={16} /> Hours Summary
+        </div>
+        {loading ? (
+          <p className="text-sm text-gray-400">Loading…</p>
+        ) : (
+          <ClockHoursSummary shifts={history} />
         )}
       </div>
 

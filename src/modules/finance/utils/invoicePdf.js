@@ -11,41 +11,95 @@ function formatDateTime(iso) {
   return new Date(iso).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-function drawLogo(doc, x, y) {
-  // Red rounded square with white "S" — mirrors the in-app header mark.
-  doc.setFillColor(0xCC, 0x25, 0x25)
-  doc.roundedRect(x, y, 32, 32, 4, 4, 'F')
-  doc.setTextColor(255, 255, 255)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(18)
-  doc.text('S', x + 16, y + 22, { align: 'center' })
+const BRANDING = {
+  logo:  { url: '/branding/logo.png',  format: 'PNG' },
+  iopsa: { url: '/branding/iopsa.jpg', format: 'JPEG' },
+  bbbee: { url: '/branding/bbbee.jpg', format: 'JPEG' },
 }
 
-export function buildInvoicePdf(invoice, lineItems, technicians) {
+const imageCache = {}
+
+function loadImageDataUrl(url) {
+  if (imageCache[url]) return imageCache[url]
+  imageCache[url] = fetch(url)
+    .then(res => res.blob())
+    .then(blob => new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    }))
+  return imageCache[url]
+}
+
+async function loadBrandingImages() {
+  const entries = await Promise.all(
+    Object.entries(BRANDING).map(async ([key, { url, format }]) => {
+      const dataUrl = await loadImageDataUrl(url)
+      return [key, { dataUrl, format }]
+    })
+  )
+  return Object.fromEntries(entries)
+}
+
+export async function buildInvoicePdf(invoice, lineItems, technicians) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
+  const branding = await loadBrandingImages()
   let y = MARGIN
 
-  // ── Header: logo + company name, invoice ref on the right ──────────────
-  drawLogo(doc, MARGIN, y)
-  doc.setTextColor(20, 20, 20)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(13)
-  doc.text('SAVVY CIVILS', MARGIN + 40, y + 13)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(100, 100, 100)
-  doc.text('AND PLUMBING', MARGIN + 40, y + 25)
+  // ── Header: logo, INVOICE title/ref on the left; company details on the right ──
+  doc.addImage(branding.logo.dataUrl, branding.logo.format, MARGIN, y, 120, 40)
 
+  // Accreditation marks, side by side, under the logo.
+  let ly = y + 44
+  doc.addImage(branding.bbbee.dataUrl, branding.bbbee.format, MARGIN, ly, 50, 20)
+  doc.addImage(branding.iopsa.dataUrl, branding.iopsa.format, MARGIN + 56, ly, 60, 20)
+  ly += 20 + 15
+
+  // INVOICE title + ref, left-aligned, under the accreditation marks.
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(20)
   doc.setTextColor(20, 20, 20)
-  doc.text('INVOICE', PAGE_W - MARGIN, y + 15, { align: 'right' })
+  doc.text('INVOICE', MARGIN, ly)
+  ly += 15
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   doc.setTextColor(90, 90, 90)
-  doc.text(invoice.invoice_ref || '—', PAGE_W - MARGIN, y + 30, { align: 'right' })
+  doc.text(invoice.invoice_ref || '—', MARGIN, ly)
+  ly += 15
 
-  y += 55
+  // Company details, right-aligned, at the top.
+  let ry = y
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(20, 20, 20)
+  doc.text('SAVVY CIVILS & PLUMBING', PAGE_W - MARGIN, ry, { align: 'right' })
+  ry += 12
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(100, 100, 100)
+  const companyLines = [
+    '13 Bartlett Road,',
+    'Beyers Park,',
+    'Boksburg',
+    'Johannesburg',
+    'South Africa',
+    '1459',
+    'Tel: +27-11 894 3942/087 806 6262',
+  ]
+  companyLines.forEach(line => { doc.text(line, PAGE_W - MARGIN, ry, { align: 'right' }); ry += 10 })
+  ry += 4
+
+  const companyMeta = [
+    'Email: sales@savvyplumbing.co.za',
+    'Web: sales@savvyplumbing.co.za',
+    'Company Reg: 2018/397154/07',
+    'VAT No: 4050292590',
+  ]
+  companyMeta.forEach(line => { doc.text(line, PAGE_W - MARGIN, ry, { align: 'right' }); ry += 10 })
+
+  y = Math.max(ly, ry) + 10
   doc.setDrawColor(220, 220, 220)
   doc.line(MARGIN, y, PAGE_W - MARGIN, y)
   y += 25
@@ -220,13 +274,16 @@ export function buildInvoicePdf(invoice, lineItems, technicians) {
   return doc
 }
 
-export function downloadInvoicePdf(invoice, lineItems, technicians) {
-  buildInvoicePdf(invoice, lineItems, technicians).save(`${invoice.invoice_ref || 'invoice'}.pdf`)
+export async function downloadInvoicePdf(invoice, lineItems, technicians) {
+  const doc = await buildInvoicePdf(invoice, lineItems, technicians)
+  doc.save(`${invoice.invoice_ref || 'invoice'}.pdf`)
 }
 
 // Opens the PDF in a new tab for on-screen review before the user commits
 // to downloading it — same document, just `output('bloburl')` instead of `save()`.
-export function previewInvoicePdf(invoice, lineItems, technicians) {
-  const doc = buildInvoicePdf(invoice, lineItems, technicians)
-  window.open(doc.output('bloburl'), '_blank')
+export async function previewInvoicePdf(invoice, lineItems, technicians) {
+  // Open the tab synchronously (before the await) so popup blockers don't kill it.
+  const tab = window.open('', '_blank')
+  const doc = await buildInvoicePdf(invoice, lineItems, technicians)
+  if (tab) tab.location.href = doc.output('bloburl')
 }

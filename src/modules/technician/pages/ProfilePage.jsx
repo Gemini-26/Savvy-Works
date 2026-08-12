@@ -5,6 +5,7 @@ import { fetchActiveShift, clockInForWork, clockOutForWork, fetchShiftHistory, o
 import { fetchOnSiteHistory } from '../services/technicianService'
 import { requestPasswordChange, fetchPendingPasswordRequest } from '../../users/services/profileService'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
+import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 import { formatTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 
 function formatDuration(ms) {
@@ -25,7 +26,7 @@ export default function ProfilePage({ profile }) {
   const [requestingPassword, setRequestingPassword] = useState(false)
 
   function loadHistory() {
-    return fetchShiftHistory(profile.id).then(setHistory)
+    return fetchShiftHistory(profile.id, 200).then(setHistory)
   }
 
   useEffect(() => {
@@ -145,6 +146,17 @@ export default function ProfilePage({ profile }) {
           >
             Clock In for the Day
           </button>
+        )}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+          <Clock size={16} /> Hours Summary
+        </div>
+        {loading ? (
+          <p className="text-sm text-gray-400">Loading…</p>
+        ) : (
+          <ClockHoursSummary shifts={history} />
         )}
       </div>
 

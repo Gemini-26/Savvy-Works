@@ -4,6 +4,8 @@ import { LogIn, KeyRound, Clock, Briefcase, Wrench } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchProfile } from '../services/profileService'
 import { fetchUserActivityLog } from '../services/activityLogService'
+import { fetchShiftHistory } from '../../../shared/services/workShiftService'
+import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 
 const CATEGORY_STYLE = {
   login:    { icon: LogIn,     color: 'text-blue-600',   bg: 'bg-blue-50',   label: 'Login' },
@@ -35,15 +37,17 @@ export default function UserActivityLogPage() {
 
   const [profile,  setProfile]  = useState(null)
   const [events,   setEvents]   = useState([])
+  const [shifts,   setShifts]   = useState([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState(null)
   const [filter,   setFilter]   = useState('all')
 
   useEffect(() => {
-    Promise.all([fetchProfile(id), fetchUserActivityLog(id)])
-      .then(([profileData, eventData]) => {
+    Promise.all([fetchProfile(id), fetchUserActivityLog(id), fetchShiftHistory(id, 200)])
+      .then(([profileData, eventData, shiftData]) => {
         setProfile(profileData)
         setEvents(eventData)
+        setShifts(shiftData)
       })
       .catch(err => setError(err.message || 'Failed to load activity log'))
       .finally(() => setLoading(false))
@@ -81,6 +85,13 @@ export default function UserActivityLogPage() {
           className="bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-600 transition-colors">
           ← Back
         </button>
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-2xl mb-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+          <Clock size={16} /> Hours Summary
+        </div>
+        <ClockHoursSummary shifts={shifts} />
       </div>
 
       <div className="flex gap-2 flex-wrap mb-4">

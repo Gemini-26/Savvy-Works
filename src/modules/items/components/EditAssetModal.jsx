@@ -3,7 +3,7 @@ import { updateAsset } from '../services/assetService'
 
 const inputCls = 'w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 
-export default function EditAssetModal({ asset, categories, onClose, onSaved }) {
+export default function EditAssetModal({ asset, categories, technicians = [], onClose, onSaved }) {
   const [form, setForm] = useState({
     name:          asset.name || '',
     category_id:   asset.category_id || '',
@@ -12,6 +12,7 @@ export default function EditAssetModal({ asset, categories, onClose, onSaved }) 
     serial_number: asset.serial_number || '',
     value:         asset.value ?? '',
     condition:     asset.condition || 'Good',
+    owner_id:      asset.owner_id || '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -32,6 +33,7 @@ export default function EditAssetModal({ asset, categories, onClose, onSaved }) 
         serial_number: form.serial_number || null,
         value:         Number(form.value) || 0,
         condition:     form.condition,
+        owner_id:      form.owner_id || null,
       })
       onSaved()
     } catch (err) {
@@ -97,6 +99,14 @@ export default function EditAssetModal({ asset, categories, onClose, onSaved }) 
                 <option>Damaged</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Owner</label>
+            <select value={form.owner_id} onChange={e => set('owner_id', e.target.value)} className={inputCls}>
+              <option value="">— Office (no owner) —</option>
+              {technicians.map(t => <option key={t.id} value={t.id}>{t.full_name}</option>)}
+            </select>
           </div>
         </div>
         <div className="px-5 py-4 border-t border-gray-100 flex gap-2">
