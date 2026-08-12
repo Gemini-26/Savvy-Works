@@ -8,6 +8,7 @@ export default function AddListItemModal({ list, listType, technicianId, onClose
   const [storeroomItems, setStoreroomItems] = useState([])
   const [categories, setCategories] = useState([])
   const [selectedAssetId, setSelectedAssetId] = useState('')
+  const [quantity, setQuantity] = useState('1')
   const [newName, setNewName] = useState('')
   const [newCategoryId, setNewCategoryId] = useState('')
   const [newValue, setNewValue] = useState('')
@@ -27,7 +28,7 @@ export default function AddListItemModal({ list, listType, technicianId, onClose
     setError(null)
     try {
       await assignAsset(selectedAssetId, technicianId)
-      await addListItem(list.id, selectedAssetId)
+      await addListItem(list.id, selectedAssetId, Math.max(1, Number(quantity) || 1))
       onAdded()
     } catch (err) {
       setError(err.message || 'Failed to add item')
@@ -48,11 +49,12 @@ export default function AddListItemModal({ list, listType, technicianId, onClose
         asset_group: 'tool_inventory',
         value: Number(newValue) || 0,
         condition: 'Good',
+        owner_id: technicianId,
         holder_id: technicianId,
-        status: 'checked_out',
+        status: 'with_owner',
         since: new Date().toISOString(),
       })
-      await addListItem(list.id, created.id)
+      await addListItem(list.id, created.id, Math.max(1, Number(quantity) || 1))
       onAdded()
     } catch (err) {
       setError(err.message || 'Failed to create item')
@@ -111,6 +113,11 @@ export default function AddListItemModal({ list, listType, technicianId, onClose
               </div>
             </>
           )}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Quantity</label>
+            <input type="number" step="1" min="1" value={quantity} onChange={e => setQuantity(e.target.value)} className={inputCls} />
+          </div>
         </div>
 
         <div className="px-5 py-4 border-t border-gray-100 flex gap-2">

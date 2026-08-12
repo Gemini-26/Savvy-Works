@@ -4,7 +4,7 @@ import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import {
   fetchAssetLists, createAssetList, updateAssetList, deleteAssetList,
-  duplicateAssetList, addListItem, removeListItem, fetchAssets, fetchTechnicians,
+  duplicateAssetList, addListItem, removeListItem, fetchAssets, fetchTechnicians, updateListItemQuantity,
 } from '../services/assetService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 
@@ -62,6 +62,16 @@ function ListEditorModal({ list, listType, technicians, allAssets, onClose, onSa
     setItems(prev => prev.filter(i => i.id !== item.id))
   }
 
+  async function handleQuantityChange(item, value) {
+    const qty = Math.max(1, Number(value) || 1)
+    if (list && !String(item.id).startsWith('temp-')) {
+      await updateListItemQuantity(item.id, qty).catch(err => setError(err.message))
+    }
+    setItems(prev => prev.map(i => i.id === item.id ? { ...i, quantity: qty } : i))
+  }
+
+  const liability = items.reduce((s, i) => s + Number(i.asset?.value || 0) * (i.quantity || 1), 0)
+
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl w-full max-w-lg max-h-[85vh] flex flex-col">
@@ -104,12 +114,27 @@ function ListEditorModal({ list, listType, technicians, allAssets, onClose, onSa
                   <li key={item.id} className="flex items-center justify-between px-3 py-2 text-sm">
                     <span className="text-gray-900">{item.asset.name}</span>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-gray-500">{formatCurrency(item.asset.value)}</span>
+                      <span className="flex items-center gap-1 text-xs text-gray-500">
+                        Qty
+                        <input
+                          type="number" min="1" step="1"
+                          defaultValue={item.quantity || 1} key={`${item.id}-${item.quantity}`}
+                          onBlur={e => handleQuantityChange(item, e.target.value)}
+                          className="w-14 px-1.5 py-0.5 text-xs rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </span>
+                      <span className="text-xs text-gray-500">{formatCurrency(item.asset.value)} each</span>
                       <button onClick={() => handleRemoveItem(item)} className="text-xs text-red-600">Remove</button>
                     </div>
                   </li>
                 ))}
               </ul>
+            )}
+            {items.length > 0 && (
+              <div className="mt-2 flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <span className="text-xs font-medium text-gray-600">Liability</span>
+                <span className="text-sm font-bold text-gray-900">{formatCurrency(liability)}</span>
+              </div>
             )}
           </div>
         </div>
@@ -211,6 +236,7 @@ export default function AssetListsPage() {
                   <p className="text-xs text-gray-500">
                     {list.items?.length || 0} item{list.items?.length === 1 ? '' : 's'}
                     {list.assignee ? ` · assigned to ${list.assignee.full_name}` : ' · unassigned'}
+                    {' · Liability: '}{formatCurrency((list.items || []).reduce((s, i) => s + Number(i.asset?.value || 0) * (i.quantity || 1), 0))}
                   </p>
                 </div>
                 <div className="flex gap-3 text-xs">

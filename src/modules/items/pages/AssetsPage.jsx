@@ -13,6 +13,7 @@ import {
   fetchAssets, fetchTechnicians, fetchAssetCategories, assignAsset, deleteAsset,
   fetchStoreroomRequests, approveRequest, denyRequest, confirmHandoverPin,
   fetchStoreroomReturns, approveReturn, denyReturn, confirmReturnHandover,
+  fetchTechnicianLiabilityTotals,
 } from '../services/assetService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { getCurrentProfile } from '../../../services/authService'
@@ -98,10 +99,10 @@ function StoreroomTab() {
         fetchStoreroomRequests(),
         fetchStoreroomReturns(),
       ])
-      // Only tools with no permanent owner belong to the storeroom pool —
-      // a technician's own gear (owner_id set) lives under Tools & Inventory,
-      // even while it's temporarily checked out to someone else.
-      setAssets(assetData.filter(a => !a.owner_id))
+      // The storeroom pool is whatever is physically sitting in the storeroom
+      // right now (status 'warehouse') — including a technician's own gear
+      // if it's been booked back in. Their Owner tag travels with it either way.
+      setAssets(assetData.filter(a => a.status === 'warehouse'))
       setTechnicians(techData)
       setCategories(catData)
       setStoreroomRequests(requestData)
@@ -266,6 +267,7 @@ function StoreroomTab() {
               <tr className="text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100 bg-gray-50">
                 <th className="text-left px-4 py-3">Asset</th>
                 <th className="text-left px-4 py-3">Currently with</th>
+                <th className="text-left px-4 py-3">Owner</th>
                 <th className="text-left px-4 py-3">Kind</th>
                 <th className="text-left px-4 py-3">Condition</th>
                 <th className="text-right px-4 py-3">Value</th>
@@ -280,6 +282,7 @@ function StoreroomTab() {
                     <div className="text-xs text-gray-400 font-mono">{asset.barcode || asset.serial_number || ''}</div>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{asset.holder?.full_name || 'In storeroom'}</td>
+                  <td className="px-4 py-3 text-gray-600">{asset.owner?.full_name || 'Office'}</td>
                   <td className="px-4 py-3 text-gray-600 capitalize">{asset.item_kind}</td>
                   <td className="px-4 py-3 text-gray-600">{asset.condition}</td>
                   <td className="px-4 py-3 text-right text-gray-900 tabular-nums">{formatCurrency(asset.value)}</td>
@@ -319,7 +322,7 @@ function StoreroomTab() {
       )}
 
       {editingAsset && (
-        <EditAssetModal asset={editingAsset} categories={categories}
+        <EditAssetModal asset={editingAsset} categories={categories} technicians={technicians}
           onClose={() => setEditingAsset(null)} onSaved={() => { setEditingAsset(null); load() }} />
       )}
 
@@ -340,13 +343,14 @@ function ToolsInventoryTab() {
   const [technicians, setTechnicians] = useState([])
   const [selected, setSelected] = useState(null)
   const [adminProfile, setAdminProfile] = useState(null)
+  const [liabilityTotals, setLiabilityTotals] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([fetchTechnicians(), getCurrentProfile().catch(() => null)])
-      .then(([techs, profile]) => { setTechnicians(techs); setAdminProfile(profile) })
+    Promise.all([fetchTechnicians(), getCurrentProfile().catch(() => null), fetchTechnicianLiabilityTotals()])
+      .then(([techs, profile, totals]) => { setTechnicians(techs); setAdminProfile(profile); setLiabilityTotals(totals) })
       .catch(err => setError(err.message || 'Failed to load technicians'))
       .finally(() => setLoading(false))
   }, [])
@@ -376,7 +380,7 @@ function ToolsInventoryTab() {
             <button key={t.id} onClick={() => setSelected(t)}
               className="text-left bg-white rounded-xl border border-gray-200 p-4 hover:border-blue-300 transition-colors">
               <p className="text-sm font-bold text-gray-900">{t.full_name}</p>
-              <p className="text-xs text-gray-500 mt-0.5">View tools, inventory & vehicle</p>
+              <p className="text-xs text-gray-500 mt-0.5">Liability: {formatCurrency(liabilityTotals[t.id] || 0)}</p>
             </button>
           ))}
         </div>

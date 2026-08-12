@@ -134,9 +134,12 @@ export default function InvoiceDetailPage() {
     <PageContainer>
 
       <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">{form.title || 'Invoice'}</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Ref: <span className="font-mono">{form.invoice_ref || '—'}</span></p>
+        <div className="flex items-center gap-3">
+          <img src="/branding/logo.png" alt="Savvy Civils and Plumbing" className="h-10 w-auto" />
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">{form.title || 'Invoice'}</h1>
+            <p className="text-sm text-gray-500 mt-0.5">Ref: <span className="font-mono">{form.invoice_ref || '—'}</span></p>
+          </div>
         </div>
         <div className="flex gap-2">
           {editing ? (
