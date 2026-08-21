@@ -1,49 +1,23 @@
 import { jsPDF } from 'jspdf'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
+import { loadBrandingImages, drawPdfHeader } from './pdfHeader'
 
 const MARGIN = 40
 const PAGE_W = 595.28 // A4 pt
 const CONTENT_W = PAGE_W - MARGIN * 2
 
-function drawLogo(doc, x, y) {
-  // Red rounded square with white "S" — mirrors the in-app header mark.
-  doc.setFillColor(0xCC, 0x25, 0x25)
-  doc.roundedRect(x, y, 32, 32, 4, 4, 'F')
-  doc.setTextColor(255, 255, 255)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(18)
-  doc.text('S', x + 16, y + 22, { align: 'center' })
-}
-
-export function downloadPurchaseOrderPdf(po, lineItems) {
+export async function downloadPurchaseOrderPdf(po, lineItems) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
-  let y = MARGIN
+  const branding = await loadBrandingImages()
 
-  // ── Header: logo + company name, PO ref on the right ────────────────────
-  drawLogo(doc, MARGIN, y)
-  doc.setTextColor(20, 20, 20)
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(13)
-  doc.text('SAVVY CIVILS', MARGIN + 40, y + 13)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(100, 100, 100)
-  doc.text('AND PLUMBING', MARGIN + 40, y + 25)
-
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(20)
-  doc.setTextColor(20, 20, 20)
-  doc.text('PURCHASE ORDER', PAGE_W - MARGIN, y + 15, { align: 'right' })
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(10)
-  doc.setTextColor(90, 90, 90)
-  doc.text(po.po_ref || '—', PAGE_W - MARGIN, y + 30, { align: 'right' })
-
-  y += 55
-  doc.setDrawColor(220, 220, 220)
-  doc.line(MARGIN, y, PAGE_W - MARGIN, y)
-  y += 25
+  let y = drawPdfHeader(doc, branding, {
+    title: 'PURCHASE ORDER',
+    ref: po.po_ref,
+    marginX: MARGIN,
+    pageW: PAGE_W,
+    marginTop: MARGIN,
+  })
 
   // ── Supplier / Order Details ─────────────────────────────────────────────
   doc.setFont('helvetica', 'bold')

@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchCustomer, updateCustomer, deleteCustomer } from '../services/customerService'
+import { CURRENCIES } from '../../../shared/constants/currencies'
+import { COUNTRIES } from '../../../shared/constants/countries'
+import { GAUTENG_REGIONS, SA_PROVINCES } from '../../../shared/constants/regions'
 
 const CUSTOMER_TYPES = ['General Customer', 'Insurance', 'Maintenance', 'Private']
-const STATUSES       = ['Active', 'Inactive', 'On Hold']
-const CURRENCIES     = ['South African Rand - RAND', 'US Dollar - USD', 'Euro - EUR', 'British Pound - GBP']
+const STATUSES       = ['Active', 'Inactive']
 const DISCOUNT_TYPES = ['Percentage', 'Fixed Amount']
 const PAYMENT_TERMS  = ['Immediate', '7 days', '14 days', '30 days', '60 days']
-const COUNTRIES      = ['South Africa (+27)', 'Zimbabwe (+263)', 'Botswana (+267)', 'Namibia (+264)', 'Lesotho (+266)', 'Eswatini (+268)', 'Mozambique (+258)']
 const TABS           = ['Customer Details', 'Quotes', 'Jobs', 'Invoices', 'Products', 'Recurring Jobs', 'Recurring Invoices', 'Assets', 'Projects', 'Attachment']
 
 const inputCls    = 'w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white'
@@ -376,9 +377,7 @@ export default function CustomerDetailPage() {
                 {ro
                   ? <span className={[
                       'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
-                      form.status === 'Active'   ? 'bg-green-100 text-green-700' :
-                      form.status === 'On Hold'  ? 'bg-yellow-100 text-yellow-700' :
-                                                   'bg-gray-100 text-gray-500',
+                      form.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500',
                     ].join(' ')}>{form.status}</span>
                   : <select value={form.status} onChange={e => set('status', e.target.value)} className={inputCls}>
                       {STATUSES.map(s => <option key={s}>{s}</option>)}
@@ -396,9 +395,7 @@ export default function CustomerDetailPage() {
                   ? <p className="py-1.5 text-sm text-gray-800">{form.region || '—'}</p>
                   : <select value={form.region} onChange={e => set('region', e.target.value)} className={inputCls}>
                       <option value="">None</option>
-                      <option>Gauteng</option><option>Western Cape</option><option>Eastern Cape</option>
-                      <option>KwaZulu-Natal</option><option>Limpopo</option><option>Mpumalanga</option>
-                      <option>North West</option><option>Free State</option><option>Northern Cape</option>
+                      {GAUTENG_REGIONS.map(r => <option key={r}>{r}</option>)}
                     </select>
                 }
               </Field>
@@ -418,10 +415,13 @@ export default function CustomerDetailPage() {
                 }
               </Field>
 
-              <Field label="County">
+              <Field label="Province">
                 {ro
                   ? <p className="py-1.5 text-sm text-gray-800">{form.county || '—'}</p>
-                  : <input value={form.county} onChange={e => set('county', e.target.value)} placeholder="County" className={inputCls} />
+                  : <select value={form.county} onChange={e => set('county', e.target.value)} className={inputCls}>
+                      <option value="">— Select Province —</option>
+                      {SA_PROVINCES.map(p => <option key={p}>{p}</option>)}
+                    </select>
                 }
               </Field>
 

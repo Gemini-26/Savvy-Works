@@ -3,12 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { createJob } from '../services/jobService'
 import { supabase } from '../../../lib/supabase'
-import { CUSTOMER_TYPE_LABELS } from '../../../shared/constants/customerTypes'
+import { CUSTOMER_TYPE_LABELS as BASE_CUSTOMER_TYPES } from '../../../shared/constants/customerTypes'
 import { JOB_TYPES } from '../../../shared/constants/jobTypes'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
+import { CURRENCIES, DEFAULT_CURRENCY } from '../../../shared/constants/currencies'
+import { COUNTRIES, DEFAULT_COUNTRY } from '../../../shared/constants/countries'
+import { GAUTENG_REGIONS, SA_PROVINCES } from '../../../shared/constants/regions'
 
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
-const COUNTRIES  = ['South Africa', 'Zimbabwe', 'Botswana', 'Namibia', 'Lesotho', 'Eswatini', 'Mozambique']
+const STATUSES    = ['Active', 'Inactive']
 
 function generateJobRef() {
   const year = new Date().getFullYear()
@@ -101,7 +104,7 @@ const BLANK_SITE = {
   site_city:          '',
   site_county:        '',
   site_postcode:      '',
-  site_country:       'South Africa',
+  site_country:       DEFAULT_COUNTRY,
   site_notes:         '',
 }
 
@@ -113,13 +116,21 @@ export default function NewJobPage() {
   const [contacts,  setContacts]  = useState([])
   const [syncSite,  setSyncSite]  = useState(true)
 
+  const BLANK_NEW_CUSTOMER = {
+    customer_name: '', contact_name: '', customer_type: '',
+    email: '', telephone: '', mobile: '', fax: '', website: '',
+    payment_terms: '30 days', currency: DEFAULT_CURRENCY,
+    credit_limit: '0.00', discount: '0.00', vat_no: '', status: 'Active',
+    region: '', address: '', city: '', county: '', postcode: '',
+    country: DEFAULT_COUNTRY, site_notes: '', sage_ref: '', notes: '',
+  }
+
   const [showAddCustomer, setShowAddCustomer] = useState(false)
-  const [newCustomer,     setNewCustomer]     = useState({
-    customer_name: '', email: '', telephone: '', mobile: '', customer_type: '',
-    address: '', city: '', county: '', postcode: '',
-  })
+  const [newCustomer,     setNewCustomer]     = useState(BLANK_NEW_CUSTOMER)
   const [savingCustomer,  setSavingCustomer]  = useState(false)
   const [customerError,   setCustomerError]   = useState(null)
+  const [customerTypes,   setCustomerTypes]   = useState(BASE_CUSTOMER_TYPES)
+  const [regions,         setRegions]         = useState(GAUTENG_REGIONS)
 
   const startDate = today()
 
@@ -145,6 +156,11 @@ export default function NewJobPage() {
     contact_email:     '',
     contact_telephone: '+27-',
     contact_mobile:    '+27-',
+    customer_address:  '',
+    customer_city:     '',
+    customer_county:   '',
+    customer_postcode: '',
+    customer_country:  DEFAULT_COUNTRY,
     ...BLANK_SITE,
   })
 
@@ -152,37 +168,40 @@ export default function NewJobPage() {
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
-  // Mirror customer contact fields into site fields whenever syncSite is on
+  // Mirror customer fields into site fields whenever syncSite is on
   useEffect(() => {
     if (!syncSite) return
     setForm(prev => ({
       ...prev,
-      site_contact_name:  prev.contact_name,
-      site_contact_email: prev.contact_email,
-      site_telephone:     prev.contact_telephone,
-      site_mobile:        prev.contact_mobile,
-      site_address:       prev.site_address, // address is shared — keep as-is
-      site_city:          prev.site_city,
-      site_county:        prev.site_county,
-      site_postcode:      prev.site_postcode,
-      site_country:       prev.site_country,
+      site_company:        prev.contact_name,
+      site_contact_name:   prev.contact_name,
+      site_contact_email:  prev.contact_email,
+      site_telephone:      prev.contact_telephone,
+      site_mobile:         prev.contact_mobile,
+      site_address:        prev.customer_address,
+      site_city:           prev.customer_city,
+      site_county:         prev.customer_county,
+      site_postcode:       prev.customer_postcode,
+      site_country:        prev.customer_country,
     }))
-  }, [syncSite, form.contact_name, form.contact_email, form.contact_telephone, form.contact_mobile])
+  }, [
+    syncSite,
+    form.contact_name, form.contact_email, form.contact_telephone, form.contact_mobile,
+    form.customer_address, form.customer_city, form.customer_county, form.customer_postcode, form.customer_country,
+  ])
 
   function handleClearSite() {
     setSyncSite(false)
     setForm(prev => ({ ...prev, ...BLANK_SITE }))
   }
 
+  function handleEditSite() {
+    // Unlock the site fields for independent editing without wiping current values
+    setSyncSite(false)
+  }
+
   function handleSameAsCustomer() {
     setSyncSite(true)
-    setForm(prev => ({
-      ...prev,
-      site_contact_name:  prev.contact_name,
-      site_contact_email: prev.contact_email,
-      site_telephone:     prev.contact_telephone,
-      site_mobile:        prev.contact_mobile,
-    }))
   }
 
   function setNC(field, value) {
@@ -198,21 +217,35 @@ export default function NewJobPage() {
         .from('customers')
         .insert([{
           customer_name: newCustomer.customer_name,
-          email:         newCustomer.email,
-          telephone:     newCustomer.telephone,
-          mobile:        newCustomer.mobile,
+          contact_name:  newCustomer.contact_name,
+          email:         newCustomer.email     || null,
+          telephone:     newCustomer.telephone || null,
+          mobile:        newCustomer.mobile    || null,
+          fax:           newCustomer.fax       || null,
+          website:       newCustomer.website   || null,
           customer_type: newCustomer.customer_type || null,
-          address:       newCustomer.address  || null,
-          city:          newCustomer.city     || null,
-          county:        newCustomer.county   || null,
-          postcode:      newCustomer.postcode || null,
+          payment_terms: newCustomer.payment_terms || null,
+          currency:      newCustomer.currency  || null,
+          credit_limit:  newCustomer.credit_limit || 0,
+          discount:      newCustomer.discount  || 0,
+          vat_no:        newCustomer.vat_no    || null,
+          status:        newCustomer.status.toLowerCase(),
+          region:        newCustomer.region    || null,
+          address:       newCustomer.address   || null,
+          city:          newCustomer.city      || null,
+          county:        newCustomer.county    || null,
+          postcode:      newCustomer.postcode  || null,
+          country:       newCustomer.country   || null,
+          site_notes:    newCustomer.site_notes || null,
+          sage_ref:      newCustomer.sage_ref  || null,
+          notes:         newCustomer.notes     || null,
         }])
       if (error) throw error
       const { data: list } = await supabase.from('customers').select('id').eq('customer_name', newCustomer.customer_name).order('created_at', { ascending: false }).limit(1)
       await reloadCustomers()
       if (list?.[0]) set('customer_id', list[0].id)
       setShowAddCustomer(false)
-      setNewCustomer({ customer_name: '', email: '', telephone: '', mobile: '', customer_type: '', address: '', city: '', county: '', postcode: '' })
+      setNewCustomer(BLANK_NEW_CUSTOMER)
     } catch (err) {
       setCustomerError(err.message || 'Failed to add customer')
     } finally {
@@ -241,11 +274,11 @@ export default function NewJobPage() {
           contact_telephone: data.telephone ? `+27-${data.telephone}` : '+27-',
           contact_mobile:    data.mobile    ? `+27-${data.mobile}`    : '+27-',
           customer_type:     data.customer_type ?? '',
-          site_address:      data.address   ?? '',
-          site_city:         data.city      ?? '',
-          site_county:       data.county    ?? '',
-          site_postcode:     data.postcode  ?? '',
-          site_country:      data.country   ?? 'South Africa',
+          customer_address:  data.address   ?? '',
+          customer_city:     data.city      ?? '',
+          customer_county:   data.county    ?? '',
+          customer_postcode: data.postcode  ?? '',
+          customer_country:  data.country   ?? DEFAULT_COUNTRY,
         }))
       })
 
@@ -275,8 +308,11 @@ export default function NewJobPage() {
     setSaving(true)
     setError(null)
     try {
+      // customer_address/city/county/postcode/country only exist on the
+      // customers table — the jobs table only has site_* columns.
+      const { customer_address, customer_city, customer_county, customer_postcode, customer_country, ...jobForm } = form
       await createJob({
-        ...form,
+        ...jobForm,
         status:        form.status.toLowerCase().replace(/ /g, '_'),
         priority:      form.priority.toLowerCase(),
         customer_id:   form.customer_id || null,
@@ -364,12 +400,24 @@ export default function NewJobPage() {
               </Field>
 
               <Field label="Type" span>
-                <select value={form.customer_type} onChange={e => set('customer_type', e.target.value)} className={inputCls}>
-                  <option value="">— Select Type —</option>
-                  {CUSTOMER_TYPE_LABELS.map(t => (
-                    <option key={t} value={t.toLowerCase()}>{t}</option>
-                  ))}
-                </select>
+                <div className="flex gap-1">
+                  <select value={form.customer_type} onChange={e => set('customer_type', e.target.value)} className={inputCls + ' flex-1'}>
+                    <option value="">— Select Type —</option>
+                    {customerTypes.map(t => (
+                      <option key={t} value={t.toLowerCase()}>{t}</option>
+                    ))}
+                  </select>
+                  <button type="button" title="Add new type" onClick={() => {
+                    const value = window.prompt('New customer type name:')
+                    if (!value || !value.trim()) return
+                    const trimmed = value.trim()
+                    setCustomerTypes(prev => prev.includes(trimmed) ? prev : [...prev, trimmed])
+                    set('customer_type', trimmed.toLowerCase())
+                  }}
+                    className="flex-none w-9 h-9 flex items-center justify-center rounded border border-blue-400 bg-blue-50 text-blue-600 hover:bg-blue-100 text-lg font-bold transition-colors">
+                    +
+                  </button>
+                </div>
               </Field>
 
               <Field label="Name" required span>
@@ -394,28 +442,30 @@ export default function NewJobPage() {
               </Field>
 
               <Field label="Address" span>
-                <textarea rows={3} value={form.site_address}
-                  onChange={e => set('site_address', e.target.value)}
+                <textarea rows={3} value={form.customer_address}
+                  onChange={e => set('customer_address', e.target.value)}
                   placeholder="Address" className={inputCls + ' resize-none'} />
               </Field>
 
               <Field label="City">
-                <input value={form.site_city} onChange={e => set('site_city', e.target.value)}
+                <input value={form.customer_city} onChange={e => set('customer_city', e.target.value)}
                   placeholder="City" className={inputCls} />
               </Field>
 
-              <Field label="County">
-                <input value={form.site_county} onChange={e => set('site_county', e.target.value)}
-                  placeholder="County" className={inputCls} />
+              <Field label="Province">
+                <select value={form.customer_county} onChange={e => set('customer_county', e.target.value)} className={inputCls}>
+                  <option value="">— Select Province —</option>
+                  {SA_PROVINCES.map(p => <option key={p}>{p}</option>)}
+                </select>
               </Field>
 
               <Field label="Postcode" span>
-                <input value={form.site_postcode} onChange={e => set('site_postcode', e.target.value)}
+                <input value={form.customer_postcode} onChange={e => set('customer_postcode', e.target.value)}
                   placeholder="Postcode" className={inputCls} />
               </Field>
 
               <Field label="Country" span>
-                <select value={form.site_country} onChange={e => set('site_country', e.target.value)} className={inputCls}>
+                <select value={form.customer_country} onChange={e => set('customer_country', e.target.value)} className={inputCls}>
                   {COUNTRIES.map(c => <option key={c}>{c}</option>)}
                 </select>
               </Field>
@@ -431,22 +481,36 @@ export default function NewJobPage() {
               <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wider">
                 Site Details
               </h2>
-              {syncSite ? (
-                <button type="button" onClick={handleClearSite}
-                  className="text-xs font-medium text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-3 py-1 rounded transition-colors">
-                  Clear
-                </button>
-              ) : (
-                <button type="button" onClick={handleSameAsCustomer}
-                  className="text-xs font-medium text-blue-500 hover:text-blue-700 border border-blue-200 hover:border-blue-400 px-3 py-1 rounded transition-colors">
-                  Same as Customer
-                </button>
-              )}
+              <div className="flex gap-1.5">
+                {syncSite ? (
+                  <>
+                    <button type="button" onClick={handleEditSite}
+                      className="text-xs font-medium text-blue-500 hover:text-blue-700 border border-blue-200 hover:border-blue-400 px-3 py-1 rounded transition-colors">
+                      Edit
+                    </button>
+                    <button type="button" onClick={handleClearSite}
+                      className="text-xs font-medium text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-3 py-1 rounded transition-colors">
+                      Clear
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={handleClearSite}
+                      className="text-xs font-medium text-red-500 hover:text-red-700 border border-red-200 hover:border-red-400 px-3 py-1 rounded transition-colors">
+                      Clear
+                    </button>
+                    <button type="button" onClick={handleSameAsCustomer}
+                      className="text-xs font-medium text-blue-500 hover:text-blue-700 border border-blue-200 hover:border-blue-400 px-3 py-1 rounded transition-colors">
+                      Same as Customer
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
 
             {syncSite && (
               <p className="text-xs text-gray-400 -mt-2">
-                Showing customer details — click <span className="text-red-500 font-medium">Clear</span> to enter a different site.
+                Showing customer details — click <span className="text-blue-500 font-medium">Edit</span> to edit them independently, or <span className="text-red-500 font-medium">Clear</span> to enter a different site.
               </p>
             )}
 
@@ -496,10 +560,15 @@ export default function NewJobPage() {
                   className={syncSite ? readonlyCls : inputCls} />
               </Field>
 
-              <Field label="County">
-                <input value={form.site_county} onChange={e => set('site_county', e.target.value)}
-                  placeholder="Site County" readOnly={syncSite}
-                  className={syncSite ? readonlyCls : inputCls} />
+              <Field label="Province">
+                {syncSite ? (
+                  <input readOnly value={form.site_county} className={readonlyCls} />
+                ) : (
+                  <select value={form.site_county} onChange={e => set('site_county', e.target.value)} className={inputCls}>
+                    <option value="">— Select Province —</option>
+                    {SA_PROVINCES.map(p => <option key={p}>{p}</option>)}
+                  </select>
+                )}
               </Field>
 
               <Field label="Postcode" span>
@@ -628,8 +697,8 @@ export default function NewJobPage() {
       </form>
       {/* ── Add Customer Modal ─────────────────────────────────────────── */}
       {showAddCustomer && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6">
 
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-base font-bold text-gray-900">Add New Customer</h3>
@@ -643,7 +712,7 @@ export default function NewJobPage() {
               </div>
             )}
 
-            <form onSubmit={handleAddCustomer} className="space-y-4">
+            <form id="add-customer-form" onSubmit={handleAddCustomer} className="grid grid-cols-2 gap-x-6 gap-y-4">
 
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">
@@ -656,12 +725,40 @@ export default function NewJobPage() {
               </div>
 
               <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">
+                  Contact Name <span className="text-red-500">*</span>
+                </label>
+                <input required value={newCustomer.contact_name}
+                  onChange={e => setNC('contact_name', e.target.value)}
+                  placeholder="Contact name" className={inputCls} />
+              </div>
+
+              <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Customer Type</label>
-                <select value={newCustomer.customer_type} onChange={e => setNC('customer_type', e.target.value)} className={inputCls}>
-                  <option value="">— Select Type —</option>
-                  {CUSTOMER_TYPE_LABELS.map(t => (
-                    <option key={t} value={t.toLowerCase()}>{t}</option>
-                  ))}
+                <div className="flex gap-1">
+                  <select value={newCustomer.customer_type} onChange={e => setNC('customer_type', e.target.value)} className={inputCls}>
+                    <option value="">— Select Type —</option>
+                    {customerTypes.map(t => (
+                      <option key={t} value={t.toLowerCase()}>{t}</option>
+                    ))}
+                  </select>
+                  <button type="button" title="Add new type" onClick={() => {
+                    const value = window.prompt('New customer type name:')
+                    if (!value || !value.trim()) return
+                    const trimmed = value.trim()
+                    setCustomerTypes(prev => prev.includes(trimmed) ? prev : [...prev, trimmed])
+                    setNC('customer_type', trimmed.toLowerCase())
+                  }}
+                    className="flex-none w-9 h-9 flex items-center justify-center rounded border border-blue-400 bg-blue-50 text-blue-600 hover:bg-blue-100 text-lg font-bold transition-colors">
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+                <select value={newCustomer.status} onChange={e => setNC('status', e.target.value)} className={inputCls}>
+                  {STATUSES.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
 
@@ -670,6 +767,13 @@ export default function NewJobPage() {
                 <input type="email" value={newCustomer.email}
                   onChange={e => setNC('email', e.target.value)}
                   placeholder="Email address" className={inputCls} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Website</label>
+                <input type="url" value={newCustomer.website}
+                  onChange={e => setNC('website', e.target.value)}
+                  placeholder="Website" className={inputCls} />
               </div>
 
               <div>
@@ -687,25 +791,94 @@ export default function NewJobPage() {
               </div>
 
               <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Fax</label>
+                <input value={newCustomer.fax}
+                  onChange={e => setNC('fax', e.target.value)}
+                  placeholder="Fax" className={inputCls} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Payment Terms</label>
+                <select value={newCustomer.payment_terms} onChange={e => setNC('payment_terms', e.target.value)} className={inputCls}>
+                  {['Immediate', '7 days', '14 days', '30 days', '60 days'].map(p => <option key={p}>{p}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Currency</label>
+                <select value={newCustomer.currency} onChange={e => setNC('currency', e.target.value)} className={inputCls}>
+                  {CURRENCIES.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Credit Limit</label>
+                <input type="number" min="0" step="0.01" value={newCustomer.credit_limit}
+                  onChange={e => setNC('credit_limit', e.target.value)}
+                  className={inputCls} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Discount</label>
+                <input type="number" min="0" step="0.01" value={newCustomer.discount}
+                  onChange={e => setNC('discount', e.target.value)}
+                  className={inputCls} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">VAT / Tax No.</label>
+                <input value={newCustomer.vat_no}
+                  onChange={e => setNC('vat_no', e.target.value)}
+                  placeholder="VAT / Tax No." className={inputCls} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Sage Ref.</label>
+                <input value={newCustomer.sage_ref}
+                  onChange={e => setNC('sage_ref', e.target.value)}
+                  placeholder="Sage Reference" className={inputCls} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Region</label>
+                <div className="flex gap-1">
+                  <select value={newCustomer.region} onChange={e => setNC('region', e.target.value)} className={inputCls}>
+                    <option value="">None</option>
+                    {regions.map(r => <option key={r}>{r}</option>)}
+                  </select>
+                  <button type="button" title="Add region" onClick={() => {
+                    const value = window.prompt('New region name:')
+                    if (!value || !value.trim()) return
+                    const trimmed = value.trim()
+                    setRegions(prev => prev.includes(trimmed) ? prev : [...prev, trimmed])
+                    setNC('region', trimmed)
+                  }}
+                    className="flex-none w-9 h-9 flex items-center justify-center rounded border border-blue-400 bg-blue-50 text-blue-600 hover:bg-blue-100 text-lg font-bold transition-colors">
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="col-span-2">
                 <label className="block text-xs font-medium text-gray-500 mb-1">Address</label>
                 <textarea rows={2} value={newCustomer.address}
                   onChange={e => setNC('address', e.target.value)}
                   placeholder="Address" className={`${inputCls} resize-none`} />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
-                  <input value={newCustomer.city}
-                    onChange={e => setNC('city', e.target.value)}
-                    placeholder="City" className={inputCls} />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-500 mb-1">County</label>
-                  <input value={newCustomer.county}
-                    onChange={e => setNC('county', e.target.value)}
-                    placeholder="County" className={inputCls} />
-                </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
+                <input value={newCustomer.city}
+                  onChange={e => setNC('city', e.target.value)}
+                  placeholder="City" className={inputCls} />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Province</label>
+                <select value={newCustomer.county} onChange={e => setNC('county', e.target.value)} className={inputCls}>
+                  <option value="">— Select Province —</option>
+                  {SA_PROVINCES.map(p => <option key={p}>{p}</option>)}
+                </select>
               </div>
 
               <div>
@@ -715,18 +888,39 @@ export default function NewJobPage() {
                   placeholder="Postcode" className={inputCls} />
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button type="submit" disabled={savingCustomer}
-                  className="flex-1 bg-blue-600 text-white py-2 rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
-                  {savingCustomer ? 'Saving…' : 'Add Customer'}
-                </button>
-                <button type="button" onClick={() => setShowAddCustomer(false)}
-                  className="flex-1 border border-gray-300 text-gray-600 py-2 rounded text-sm font-medium hover:bg-gray-50">
-                  Cancel
-                </button>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 mb-1">Country</label>
+                <select value={newCustomer.country} onChange={e => setNC('country', e.target.value)} className={inputCls}>
+                  {COUNTRIES.map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Site Notes</label>
+                <textarea rows={2} value={newCustomer.site_notes}
+                  onChange={e => setNC('site_notes', e.target.value)}
+                  placeholder="Site Notes" className={`${inputCls} resize-none`} />
+              </div>
+
+              <div className="col-span-2">
+                <label className="block text-xs font-medium text-gray-500 mb-1">Notes</label>
+                <textarea rows={2} value={newCustomer.notes}
+                  onChange={e => setNC('notes', e.target.value)}
+                  placeholder="Notes" className={`${inputCls} resize-none`} />
               </div>
 
             </form>
+
+            <div className="flex gap-3 pt-5">
+              <button type="submit" form="add-customer-form" disabled={savingCustomer}
+                className="flex-1 bg-blue-600 text-white py-2 rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
+                {savingCustomer ? 'Saving…' : 'Add Customer'}
+              </button>
+              <button type="button" onClick={() => setShowAddCustomer(false)}
+                className="flex-1 border border-gray-300 text-gray-600 py-2 rounded text-sm font-medium hover:bg-gray-50">
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       )}

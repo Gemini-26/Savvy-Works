@@ -2,14 +2,14 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { createCustomer } from '../services/customerService'
-import { CUSTOMER_TYPE_LABELS } from '../../../shared/constants/customerTypes'
+import { CUSTOMER_TYPE_LABELS as BASE_CUSTOMER_TYPES } from '../../../shared/constants/customerTypes'
+import { CURRENCIES, DEFAULT_CURRENCY } from '../../../shared/constants/currencies'
+import { COUNTRIES, DEFAULT_COUNTRY } from '../../../shared/constants/countries'
+import { GAUTENG_REGIONS, SA_PROVINCES } from '../../../shared/constants/regions'
 
-const CUSTOMER_TYPES = ['General Customer', 'Insurance', 'Maintenance', 'Private']
-const STATUSES       = ['Active', 'Inactive', 'On Hold']
-const CURRENCIES     = ['South African Rand - RAND', 'US Dollar - USD', 'Euro - EUR', 'British Pound - GBP']
+const STATUSES       = ['Active', 'Inactive']
 const DISCOUNT_TYPES = ['Percentage', 'Fixed Amount']
 const PAYMENT_TERMS  = ['Immediate', '7 days', '14 days', '30 days', '60 days']
-const COUNTRIES      = ['South Africa (+27)', 'Zimbabwe (+263)', 'Botswana (+267)', 'Namibia (+264)', 'Lesotho (+266)', 'Eswatini (+268)', 'Mozambique (+258)']
 
 const TABS = ['Customer Details', 'Quotes', 'Jobs', 'Invoices', 'Products', 'Recurring Jobs', 'Recurring Invoices', 'Assets', 'Projects', 'Attachment']
 
@@ -66,10 +66,13 @@ export default function NewCustomerPage() {
   const [saving,    setSaving]    = useState(false)
   const [error,     setError]     = useState(null)
 
+  const [customerTypes, setCustomerTypes] = useState(BASE_CUSTOMER_TYPES)
+  const [regions,       setRegions]       = useState(GAUTENG_REGIONS)
+
   const [form, setForm] = useState({
     // Customer Details
     customer_name:    '',
-    customer_type:    'General Customer',
+    customer_type:    '',
     contact_name:     '',
     job_title:        '',
     email:            '',
@@ -84,10 +87,10 @@ export default function NewCustomerPage() {
     city:             '',
     county:           '',
     postcode:         '',
-    country:          'South Africa (+27)',
+    country:          DEFAULT_COUNTRY,
     site_notes:       '',
     // Other
-    currency:         'South African Rand - RAND',
+    currency:         DEFAULT_CURRENCY,
     credit_limit:     '0.00',
     discount:         '0.00',
     discount_type:    'Percentage',
@@ -103,6 +106,22 @@ export default function NewCustomerPage() {
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
+  function handleAddCustomerType() {
+    const value = window.prompt('New customer type name:')
+    if (!value || !value.trim()) return
+    const trimmed = value.trim()
+    setCustomerTypes(prev => prev.includes(trimmed) ? prev : [...prev, trimmed])
+    set('customer_type', trimmed)
+  }
+
+  function handleAddRegion() {
+    const value = window.prompt('New region name:')
+    if (!value || !value.trim()) return
+    const trimmed = value.trim()
+    setRegions(prev => prev.includes(trimmed) ? prev : [...prev, trimmed])
+    set('region', trimmed)
+  }
+
   function phoneVal(raw) {
     const dash = raw.indexOf('-')
     return dash !== -1 ? raw.slice(dash + 1) : raw
@@ -115,20 +134,33 @@ export default function NewCustomerPage() {
     try {
       await createCustomer({
         customer_name: form.customer_name,
-        customer_type: form.customer_type.toLowerCase().replace(' customer', '').trim(),
+        customer_type: form.customer_type ? form.customer_type.toLowerCase() : null,
+        contact_name:  form.contact_name  || null,
+        job_title:     form.job_title     || null,
         email:         form.email      || null,
         telephone:     phoneVal(form.telephone) || null,
         mobile:        phoneVal(form.mobile)    || null,
-        status:        form.status.toLowerCase().replace(' ', '_'),
+        fax:           form.fax        || null,
+        website:       form.website    || null,
+        status:        form.status.toLowerCase(),
         // address fields — map to whatever columns exist
+        region:        form.region     || null,
         address:       form.address    || null,
         city:          form.city       || null,
         county:        form.county     || null,
         postcode:      form.postcode   || null,
         country:       form.country    || null,
+        site_notes:    form.site_notes || null,
         notes:         form.notes      || null,
+        currency:      form.currency   || null,
+        credit_limit:  form.credit_limit || 0,
+        discount:      form.discount   || 0,
+        discount_type: form.discount_type || null,
+        sage_ref:      form.sage_ref   || null,
         vat_no:        form.vat_no     || null,
         company_reg:   form.company_reg || null,
+        payment_terms: form.payment_terms || null,
+        assigned_products_only: form.assigned_products_only,
       })
       navigate('/contacts/customers')
     } catch (err) {
@@ -222,9 +254,10 @@ export default function NewCustomerPage() {
                     onChange={e => set('customer_type', e.target.value)}
                     className={inputCls}
                   >
-                    {CUSTOMER_TYPES.map(t => <option key={t}>{t}</option>)}
+                    <option value="">— Select Type —</option>
+                    {customerTypes.map(t => <option key={t} value={t}>{t}</option>)}
                   </select>
-                  <button type="button" title="Add new type"
+                  <button type="button" title="Add new type" onClick={handleAddCustomerType}
                     className="flex-none w-8 h-8 flex items-center justify-center rounded border border-blue-400 bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold text-lg transition-colors">
                     +
                   </button>
@@ -334,17 +367,9 @@ export default function NewCustomerPage() {
                     className={inputCls}
                   >
                     <option value="">None</option>
-                    <option>Gauteng</option>
-                    <option>Western Cape</option>
-                    <option>Eastern Cape</option>
-                    <option>KwaZulu-Natal</option>
-                    <option>Limpopo</option>
-                    <option>Mpumalanga</option>
-                    <option>North West</option>
-                    <option>Free State</option>
-                    <option>Northern Cape</option>
+                    {regions.map(r => <option key={r}>{r}</option>)}
                   </select>
-                  <button type="button" title="Add region"
+                  <button type="button" title="Add region" onClick={handleAddRegion}
                     className="flex-none w-8 h-8 flex items-center justify-center rounded border border-blue-400 bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold text-lg transition-colors">
                     +
                   </button>
@@ -371,13 +396,15 @@ export default function NewCustomerPage() {
                 />
               </Field>
 
-              <Field label="County">
-                <input
+              <Field label="Province">
+                <select
                   value={form.county}
                   onChange={e => set('county', e.target.value)}
-                  placeholder="County"
                   className={inputCls}
-                />
+                >
+                  <option value="">— Select Province —</option>
+                  {SA_PROVINCES.map(p => <option key={p}>{p}</option>)}
+                </select>
               </Field>
 
               <Field label="Postcode">
