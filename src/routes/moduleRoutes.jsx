@@ -9,6 +9,8 @@ import JobsPage from '../modules/jobs/pages/JobsPage'
 import NewJobPage from '../modules/jobs/pages/NewJobPage'
 import JobDetailPage from '../modules/jobs/pages/JobDetailPage'
 import UsersPage from '../modules/users/pages/UsersPage'
+import LiveUsersPage from '../modules/users/pages/LiveUsersPage'
+import ActiveTeamMembersPage from '../modules/users/pages/ActiveTeamMembersPage'
 import NewUserPage from '../modules/users/pages/NewUserPage'
 import UserDetailPage from '../modules/users/pages/UserDetailPage'
 import UserLogsPage from '../modules/users/pages/UserLogsPage'
@@ -33,6 +35,7 @@ import FinanceDashboardPage from '../modules/finance/pages/FinanceDashboardPage'
 import NewInvoicePage from '../modules/finance/pages/NewInvoicePage'
 import InvoiceDetailPage from '../modules/finance/pages/InvoiceDetailPage'
 import InvoicesPage from '../modules/finance/pages/InvoicesPage'
+import PaymentsPage from '../modules/finance/pages/PaymentsPage'
 import PurchaseOrdersPage from '../modules/finance/pages/PurchaseOrdersPage'
 import NewPurchaseOrderPage from '../modules/finance/pages/NewPurchaseOrderPage'
 import PurchaseOrderDetailPage from '../modules/finance/pages/PurchaseOrderDetailPage'
@@ -120,6 +123,10 @@ export const moduleRoutes = [
   { path: 'finance/invoices/overdue',   element: <InvoicesPage statusFilter="overdue" />,     title: 'Overdue Invoices' },
   { path: 'finance/invoices/paid',      element: <InvoicesPage statusFilter="paid" />,        title: 'Paid Invoices' },
   { path: 'finance/invoices/search',    element: <InvoicesPage />,                            title: 'Search Invoices' },
+  { path: 'finance/payments',           element: <PaymentsPage />,                            title: 'Payments' },
+  { path: 'finance/payments/pending',   element: <PaymentsPage statusFilter="pending" />,     title: 'Pending Payments' },
+  { path: 'finance/payments/completed', element: <PaymentsPage statusFilter="completed" />,   title: 'Completed Payments' },
+  { path: 'finance/payments/failed',    element: <PaymentsPage statusFilter="failed" />,       title: 'Failed Payments' },
   { path: 'finance/invoices/:id',       element: <InvoiceDetailPage />,                       title: 'Invoice' },
   { path: 'finance/invoices/statements',     title: 'Account Statements' },
   { path: 'finance/invoices/reminders',      title: 'Invoice Reminders' },
@@ -146,13 +153,14 @@ export const moduleRoutes = [
 
   // ── Users ─────────────────────────────────────────────────────────────────
   { path: 'users/new',           element: <NewUserPage />,                         title: 'New User' },
+  { path: 'users/live',          element: <LiveUsersPage />,                       title: 'Live Users' },
   { path: 'users/active',        element: <UsersPage activeOnly={true} />,         title: 'Active Users' },
   { path: 'users/inactive',      element: <UsersPage activeOnly={false} />,        title: 'Inactive Users' },
   { path: 'users/logs',          element: <UserLogsPage />,                        title: 'User Logs' },
   { path: 'users/logs/:id',      element: <UserActivityLogPage />,                 title: 'User Activity Log' },
   { path: 'users/:id',           element: <UserDetailPage />,                      title: 'User' },
-  { path: 'users/team/active',   title: 'Active Team Members' },
-  { path: 'users/team/inactive', title: 'Inactive Team Members' },
+  { path: 'users/team/active',   element: <ActiveTeamMembersPage activeOnly={true} />,  title: 'Active Team Members' },
+  { path: 'users/team/inactive', element: <ActiveTeamMembersPage activeOnly={false} />,  title: 'Inactive Team Members' },
   { path: 'users/timeoff/awaiting',    title: 'Time Off Awaiting Approval' },
   { path: 'users/timeoff/approved',    title: 'Time Off Approved' },
   { path: 'users/timeoff/declined',    title: 'Time Off Declined' },

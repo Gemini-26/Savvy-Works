@@ -3,8 +3,38 @@ import { Link } from 'react-router-dom'
 import { FileEdit, Clock, AlertCircle, CheckCircle2, ArrowRight, ClipboardList } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
+import DashboardCharts from '../../../shared/components/DashboardCharts.jsx'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
+
+async function fetchPaidTrend() {
+  const days = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    return d
+  })
+  const since = days[0].toISOString().slice(0, 10)
+  const { data } = await supabase.from('invoices').select('total, created_at').eq('status', 'paid').gte('created_at', since)
+  const totals = {}
+  for (const d of days) totals[d.toISOString().slice(0, 10)] = 0
+  for (const row of data ?? []) {
+    const key = row.created_at?.slice(0, 10)
+    if (key in totals) totals[key] += Number(row.total) || 0
+  }
+  return days.map(d => {
+    const key = d.toISOString().slice(0, 10)
+    return { name: d.toLocaleDateString('en-ZA', { weekday: 'short' }), value: Math.round(totals[key]) }
+  })
+}
+
+async function fetchPOBreakdown() {
+  const { data } = await supabase.from('purchase_orders').select('status')
+  const counts = {}
+  for (const row of data ?? []) {
+    counts[row.status] = (counts[row.status] || 0) + 1
+  }
+  return Object.entries(counts).map(([name, value]) => ({ name: name.replace('_', ' '), value }))
+}
 
 async function fetchStats() {
   const [draft, outstanding, overdue, paid, poDraft, poAwaiting, poApproved] = await Promise.all([
@@ -62,13 +92,17 @@ export default function FinanceDashboardPage() {
   const [stats,     setStats]     = useState(null)
   const [recent,    setRecent]    = useState([])
   const [recentPOs, setRecentPOs] = useState([])
+  const [paidTrend, setPaidTrend] = useState([])
+  const [poBreakdown, setPoBreakdown] = useState([])
   const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
-    Promise.all([fetchStats(), fetchRecentInvoices(), fetchRecentPOs()]).then(([s, i, p]) => {
+    Promise.all([fetchStats(), fetchRecentInvoices(), fetchRecentPOs(), fetchPaidTrend(), fetchPOBreakdown()]).then(([s, i, p, t, po]) => {
       setStats(s)
       setRecent(i)
       setRecentPOs(p)
+      setPaidTrend(t)
+      setPoBreakdown(po)
       setLoading(false)
     })
   }, [])
@@ -160,6 +194,13 @@ export default function FinanceDashboardPage() {
             })
         }
       </div>
+
+      <DashboardCharts
+        loading={loading}
+        bar={{ title: 'Invoices by status', color: '#6366F1', data: statCards.map(c => ({ name: c.label.replace(' Invoices', ''), value: c.value })) }}
+        line={{ title: 'Revenue paid (R, last 7 days)', color: '#10B981', data: paidTrend }}
+        pie={{ title: 'Purchase orders by status', data: poBreakdown }}
+      />
 
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">

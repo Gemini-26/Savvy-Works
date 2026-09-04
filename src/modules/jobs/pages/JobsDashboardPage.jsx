@@ -3,7 +3,46 @@ import { Link } from 'react-router-dom'
 import { Briefcase, UserX, PauseCircle, CheckCircle, ArrowRight } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
+import DashboardCharts from '../../../shared/components/DashboardCharts.jsx'
 import { formatDate } from '../../../shared/utils/formatDate'
+
+async function fetchCreatedTrend() {
+  const days = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    return d
+  })
+  const since = days[0].toISOString().slice(0, 10)
+  const { data } = await supabase
+    .from('jobs')
+    .select('created_at')
+    .is('archived_at', null)
+    .gte('created_at', since)
+  const counts = {}
+  for (const d of days) counts[d.toISOString().slice(0, 10)] = 0
+  for (const row of data ?? []) {
+    const key = row.created_at?.slice(0, 10)
+    if (key in counts) counts[key] += 1
+  }
+  return days.map(d => {
+    const key = d.toISOString().slice(0, 10)
+    return { name: d.toLocaleDateString('en-ZA', { weekday: 'short' }), value: counts[key] }
+  })
+}
+
+async function fetchPriorityBreakdown() {
+  const { data } = await supabase
+    .from('jobs')
+    .select('priority')
+    .is('archived_at', null)
+    .not('status', 'in', '("cancelled","invoiced","completed")')
+  const counts = {}
+  for (const row of data ?? []) {
+    const p = row.priority || 'none'
+    counts[p] = (counts[p] || 0) + 1
+  }
+  return Object.entries(counts).map(([name, value]) => ({ name, value }))
+}
 
 async function fetchStats() {
   const [active, unassigned, onHold, completed] = await Promise.all([
@@ -50,12 +89,16 @@ const PRIORITY_DOT = {
 export default function JobsDashboardPage() {
   const [stats,   setStats]   = useState(null)
   const [recent,  setRecent]  = useState([])
+  const [trend,   setTrend]   = useState([])
+  const [priority,setPriority]= useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([fetchStats(), fetchRecentJobs()]).then(([s, j]) => {
+    Promise.all([fetchStats(), fetchRecentJobs(), fetchCreatedTrend(), fetchPriorityBreakdown()]).then(([s, j, t, p]) => {
       setStats(s)
       setRecent(j)
+      setTrend(t)
+      setPriority(p)
       setLoading(false)
     })
   }, [])
@@ -107,6 +150,13 @@ export default function JobsDashboardPage() {
             })
         }
       </div>
+
+      <DashboardCharts
+        loading={loading}
+        bar={{ title: 'Jobs by status', color: '#3B82F6', data: statCards.map(c => ({ name: c.label.replace(' Jobs', ''), value: c.value })) }}
+        line={{ title: 'Jobs created (last 7 days)', color: '#10B981', data: trend }}
+        pie={{ title: 'Active jobs by priority', data: priority }}
+      />
 
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">

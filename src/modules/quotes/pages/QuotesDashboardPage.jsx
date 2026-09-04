@@ -3,8 +3,38 @@ import { Link } from 'react-router-dom'
 import { FileText, Send, CheckCircle2, ArrowRightCircle, ArrowRight } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
+import DashboardCharts from '../../../shared/components/DashboardCharts.jsx'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
+
+async function fetchIssuedTrend() {
+  const days = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date()
+    d.setDate(d.getDate() - (6 - i))
+    return d
+  })
+  const since = days[0].toISOString().slice(0, 10)
+  const { data } = await supabase.from('quotes').select('created_at').gte('created_at', since)
+  const counts = {}
+  for (const d of days) counts[d.toISOString().slice(0, 10)] = 0
+  for (const row of data ?? []) {
+    const key = row.created_at?.slice(0, 10)
+    if (key in counts) counts[key] += 1
+  }
+  return days.map(d => {
+    const key = d.toISOString().slice(0, 10)
+    return { name: d.toLocaleDateString('en-ZA', { weekday: 'short' }), value: counts[key] }
+  })
+}
+
+async function fetchValueByStatus() {
+  const { data } = await supabase.from('quotes').select('status, total')
+  const totals = {}
+  for (const row of data ?? []) {
+    totals[row.status] = (totals[row.status] || 0) + (Number(row.total) || 0)
+  }
+  return Object.entries(totals).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value: Math.round(value) }))
+}
 
 async function fetchStats() {
   const [draft, actioned, accepted, converted] = await Promise.all([
@@ -42,12 +72,16 @@ const STATUS_STYLES = {
 export default function QuotesDashboardPage() {
   const [stats,   setStats]   = useState(null)
   const [recent,  setRecent]  = useState([])
+  const [trend,   setTrend]   = useState([])
+  const [byValue, setByValue] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([fetchStats(), fetchRecentQuotes()]).then(([s, q]) => {
+    Promise.all([fetchStats(), fetchRecentQuotes(), fetchIssuedTrend(), fetchValueByStatus()]).then(([s, q, t, v]) => {
       setStats(s)
       setRecent(q)
+      setTrend(t)
+      setByValue(v)
       setLoading(false)
     })
   }, [])
@@ -99,6 +133,13 @@ export default function QuotesDashboardPage() {
             })
         }
       </div>
+
+      <DashboardCharts
+        loading={loading}
+        bar={{ title: 'Quotes by status', color: '#F59E0B', data: statCards.map(c => ({ name: c.label.replace(' Quotes', ''), value: c.value })) }}
+        line={{ title: 'Quotes issued (last 7 days)', color: '#10B981', data: trend }}
+        pie={{ title: 'Value by status (R)', data: byValue }}
+      />
 
       <div className="bg-white rounded-xl border border-gray-200">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">

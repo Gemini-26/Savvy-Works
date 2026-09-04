@@ -38,6 +38,19 @@ export async function fetchJobs(statusFilter, page = 0, search = '') {
   return { data, count, page, pageSize: PAGE_SIZE }
 }
 
+// Lightweight job lookup carrying the fields needed to raise + share an
+// invoice payment link straight from the completion flow.
+export async function fetchJobForPayment(id) {
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('id, customer_id, title, site_address, site_city, site_county, site_postcode, quote_id, customers(customer_name, telephone, mobile)')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
 export async function fetchJob(id) {
   const { data, error } = await supabase
     .from('jobs')

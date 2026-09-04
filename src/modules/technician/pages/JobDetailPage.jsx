@@ -3,7 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip } from 'lucide-react'
 import { fetchMyAppointment, respondToAppointment, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
 import { fetchJobPhotos, uploadJobPhoto, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument } from '../../jobs/services/jobService'
+import { fetchAssignmentTeamMembers, setAssignmentTeamMembers } from '../../users/services/teamMembersService'
 import CompleteJobModal from '../../jobs/components/CompleteJobModal'
+import SelectTeamModal from '../components/SelectTeamModal'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import { formatDateLong, formatTime } from '../../../shared/utils/formatDate'
 
@@ -13,10 +15,12 @@ export default function JobDetailPage({ profile }) {
   const [appt, setAppt] = useState(null)
   const [photos, setPhotos] = useState([])
   const [documents, setDocuments] = useState([])
+  const [teamMembers, setTeamMembers] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [docBusy, setDocBusy] = useState(false)
   const [showComplete, setShowComplete] = useState(false)
+  const [showSelectTeam, setShowSelectTeam] = useState(false)
   const [confirmClockOut, setConfirmClockOut] = useState(false)
   const [photoTab, setPhotoTab] = useState('before')
   const fileRef = useRef(null)
@@ -28,6 +32,9 @@ export default function JobDetailPage({ profile }) {
     if (data?.job_id) {
       setPhotos(await fetchJobPhotos(data.job_id))
       setDocuments(await fetchJobDocuments(data.job_id))
+    }
+    if (data?.assignmentId) {
+      setTeamMembers(await fetchAssignmentTeamMembers(data.assignmentId))
     }
     setLoading(false)
   }
@@ -44,9 +51,16 @@ export default function JobDetailPage({ profile }) {
     }
   }
 
-  async function handleClockIn() {
+  async function handleClockInConfirm(selectedTeamMemberIds) {
     setBusy(true)
-    try { await clockIn(appt.assignmentId); await load() } finally { setBusy(false) }
+    try {
+      await clockIn(appt.assignmentId)
+      await setAssignmentTeamMembers(appt.assignmentId, selectedTeamMemberIds)
+      await load()
+    } finally {
+      setBusy(false)
+      setShowSelectTeam(false)
+    }
   }
 
   async function handleClockOut() {
@@ -146,6 +160,12 @@ export default function JobDetailPage({ profile }) {
             {formatDateLong(appt.scheduled_start)}, {formatTime(appt.scheduled_start)}–{formatTime(appt.scheduled_end)}
           </div>
           {appt.notes && <p className="text-sm text-gray-500 pt-1 border-t border-gray-100">{appt.notes}</p>}
+          {teamMembers.length > 0 && (
+            <div className="flex items-start gap-2 text-sm text-gray-600 pt-1 border-t border-gray-100">
+              <span className="text-gray-400 text-xs mt-0.5">With:</span>
+              <span className="text-gray-800">{teamMembers.map(m => m.full_name).join(', ')}</span>
+            </div>
+          )}
         </div>
 
         {isPending && (
@@ -162,7 +182,7 @@ export default function JobDetailPage({ profile }) {
         {isAccepted && !isCompleted && !isPendingConfirmation && (
           <div className="flex gap-3">
             {!appt.actual_start ? (
-              <button disabled={busy} onClick={handleClockIn} className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-lg disabled:opacity-50">
+              <button disabled={busy} onClick={() => setShowSelectTeam(true)} className="flex-1 bg-blue-600 text-white text-sm font-semibold py-2.5 rounded-lg disabled:opacity-50">
                 Clock In
               </button>
             ) : (
@@ -317,6 +337,14 @@ export default function JobDetailPage({ profile }) {
           signOffName={profile.full_name}
           onClose={() => setShowComplete(false)}
           onCompleted={load}
+        />
+      )}
+
+      {showSelectTeam && (
+        <SelectTeamModal
+          busy={busy}
+          onConfirm={handleClockInConfirm}
+          onClose={() => setShowSelectTeam(false)}
         />
       )}
 

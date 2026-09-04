@@ -1,12 +1,16 @@
 import { useState, useEffect, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
-import { fetchInvoice, updateInvoice, deleteInvoice } from '../services/invoiceService'
+import {
+  fetchInvoice, updateInvoice, deleteInvoice, createPayfastPayment, buildPayfastPaymentLink,
+  fetchInvoiceEvents, logInvoiceEvent, markInvoiceRefunded, markInvoiceDisputed, sendInvoiceReceiptEmail,
+} from '../services/invoiceService'
+import { buildWhatsappLink } from '../../../shared/utils/whatsapp'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { useItems } from '../../quotes/hooks/useItems'
 import LineItemsEditor from '../../quotes/components/LineItemsEditor'
 import { fetchJobTechnicianSummary } from '../../planner/services/appointmentService'
-import { downloadInvoicePdf, previewInvoicePdf } from '../utils/invoicePdf'
+import { downloadInvoicePdf, previewInvoicePdf, invoicePdfBase64 } from '../utils/invoicePdf'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
 import { Eye } from 'lucide-react'
@@ -30,6 +34,24 @@ const STATUS_COLORS = {
   overdue:     'bg-red-100 text-red-600',
   paid:        'bg-green-100 text-green-700',
   cancelled:   'bg-gray-100 text-gray-500',
+}
+
+const PAYMENT_STATUS_LABELS = {
+  failed: 'Payment Failed', refunded: 'Refunded', disputed: 'Disputed',
+}
+
+const PAYMENT_STATUS_COLORS = {
+  failed: 'bg-red-100 text-red-600', refunded: 'bg-amber-100 text-amber-700', disputed: 'bg-amber-100 text-amber-700',
+}
+
+const EVENT_LABELS = {
+  link_generated: 'Payment link generated',
+  link_sent_whatsapp: 'Sent via WhatsApp',
+  link_sent_email: 'Sent via Email',
+  payment_completed: 'Payment received',
+  payment_failed: 'Payment failed',
+  refunded: 'Marked refunded',
+  disputed: 'Marked disputed',
 }
 
 const inputCls = 'w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white'
@@ -58,6 +80,13 @@ export default function InvoiceDetailPage() {
   const [form,          setForm]          = useState(null)
   const [lineItems,     setLineItems]     = useState([])
   const [technicians,   setTechnicians]   = useState([])
+  const [paying,        setPaying]        = useState(false)
+  const [sending,       setSending]       = useState(false)
+  const [sendingEmail,  setSendingEmail]  = useState(false)
+  const [events,        setEvents]        = useState([])
+  const [showRefund,    setShowRefund]    = useState(false)
+  const [refundReason,  setRefundReason]  = useState('')
+  const [actionBusy,    setActionBusy]    = useState(false)
 
   useEffect(() => {
     load()
@@ -78,6 +107,7 @@ export default function InvoiceDetailPage() {
         } else {
           setTechnicians([])
         }
+        fetchInvoiceEvents(id).then(setEvents).catch(() => setEvents([]))
       })
       .catch(err => { setError(err.message); setLoading(false) })
   }
@@ -91,6 +121,15 @@ export default function InvoiceDetailPage() {
     setSaving(true)
     setError(null)
     try {
+      // Marking status "Paid" by hand (e.g. cash/EFT taken outside PayFast) must
+      // also flip payment_status — it's a separate column the PayFast webhook
+      // sets together, and the "Send via WhatsApp"/"Preview Payment" actions key
+      // off payment_status, not status. Without this, a manually-paid invoice
+      // still shows those buttons as if it were unpaid.
+      const paymentFields = (form.status === 'paid' && form.payment_status !== 'paid')
+        ? { payment_status: 'paid', paid_at: form.paid_at || new Date().toISOString() }
+        : {}
+
       await updateInvoice(id, {
         customer_id:   form.customer_id   || null,
         title:         form.title         || null,
@@ -103,13 +142,114 @@ export default function InvoiceDetailPage() {
         site_postcode: form.site_postcode || null,
         notes:         form.notes         || null,
         terms:         form.terms         || null,
+        ...paymentFields,
       }, lineItems)
+
+      if (paymentFields.payment_status) {
+        await logInvoiceEvent(id, 'payment_completed', 'Marked paid manually (cash/EFT/other)')
+      }
       setEditing(false)
       load()
     } catch (err) {
       setError(err.message || 'Failed to save changes')
     } finally {
       setSaving(false)
+    }
+  }
+
+  // Opens the PayFast checkout in a new tab so an admin can see exactly what the
+  // customer will see — this does not charge anyone here, it's a preview only.
+  // The customer's actual payment happens when they open the link sent via
+  // handleSendWhatsapp, in their own browser.
+  async function handlePreviewPayment() {
+    setPaying(true)
+    setError(null)
+    try {
+      const { process_url, fields } = await createPayfastPayment(id)
+      const payForm = document.createElement('form')
+      payForm.method = 'POST'
+      payForm.action = process_url
+      payForm.target = '_blank'
+      Object.entries(fields).forEach(([key, value]) => {
+        const input = document.createElement('input')
+        input.type = 'hidden'
+        input.name = key
+        input.value = value
+        payForm.appendChild(input)
+      })
+      document.body.appendChild(payForm)
+      payForm.submit()
+      payForm.remove()
+    } catch (err) {
+      setError(err.message || 'Failed to open payment preview')
+    } finally {
+      setPaying(false)
+    }
+  }
+
+  async function handleSendWhatsapp() {
+    setSending(true)
+    setError(null)
+    try {
+      const payment = await createPayfastPayment(id)
+      const link = buildPayfastPaymentLink(payment)
+      const phone = form.customers?.mobile || form.customers?.telephone || ''
+      const message = `Hi ${form.customers?.customer_name || ''}, here is your payment link for ${form.title || form.invoice_ref}: ${link}`
+      window.open(buildWhatsappLink(phone, message), '_blank', 'noopener')
+      await logInvoiceEvent(id, 'link_sent_whatsapp', `Sent to ${phone || 'customer'}`)
+      fetchInvoiceEvents(id).then(setEvents).catch(() => {})
+    } catch (err) {
+      setError(err.message || 'Failed to create payment link')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  function handleSendReceiptWhatsapp() {
+    const phone = form.customers?.mobile || form.customers?.telephone || ''
+    const message = `Hi ${form.customers?.customer_name || ''}, thank you for your payment of ${formatCurrency(form.total)} for ${form.title || form.invoice_ref}. Your invoice is marked as paid — let us know if you'd like a copy of the receipt.`
+    window.open(buildWhatsappLink(phone, message), '_blank', 'noopener')
+  }
+
+  async function handleSendReceiptEmail() {
+    setSendingEmail(true)
+    setError(null)
+    try {
+      const pdfBase64 = await invoicePdfBase64(form, lineItems, technicians)
+      await sendInvoiceReceiptEmail(id, pdfBase64)
+      fetchInvoiceEvents(id).then(setEvents).catch(() => {})
+    } catch (err) {
+      setError(err.message || 'Failed to send receipt email')
+    } finally {
+      setSendingEmail(false)
+    }
+  }
+
+  async function handleMarkRefunded() {
+    setActionBusy(true)
+    setError(null)
+    try {
+      await markInvoiceRefunded(id, refundReason)
+      setShowRefund(false)
+      setRefundReason('')
+      load()
+    } catch (err) {
+      setError(err.message || 'Failed to mark invoice refunded')
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
+  async function handleMarkDisputed() {
+    setActionBusy(true)
+    setError(null)
+    try {
+      await markInvoiceDisputed(id, 'Marked disputed from invoice page')
+      load()
+    } catch (err) {
+      setError(err.message || 'Failed to mark invoice disputed')
+    } finally {
+      setActionBusy(false)
     }
   }
 
@@ -181,14 +321,53 @@ export default function InvoiceDetailPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3 flex-wrap">
         <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[form.status] ?? 'bg-gray-100 text-gray-600'}`}>
           {STATUS_LABELS[form.status] ?? form.status}
         </span>
+        {PAYMENT_STATUS_LABELS[form.payment_status] && (
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${PAYMENT_STATUS_COLORS[form.payment_status]}`}>
+            {PAYMENT_STATUS_LABELS[form.payment_status]}
+          </span>
+        )}
         {form.job_id && (
           <button onClick={() => navigate(`/jobs/${form.job_id}`)} className="text-xs text-teal-600 hover:underline">
             View source job →
           </button>
+        )}
+        {form.payment_status !== 'paid' && form.status !== 'draft' && Number(form.total) > 0 && (
+          <div className="ml-auto flex gap-2">
+            <button type="button" onClick={handleSendWhatsapp} disabled={sending}
+              className="bg-[#25D366] text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-colors">
+              {sending ? 'Preparing…' : '📲 Send via WhatsApp'}
+            </button>
+            <button type="button" onClick={handlePreviewPayment} disabled={paying}
+              title="Opens the checkout page in a new tab, exactly as the customer will see it — this does not charge you."
+              className="bg-gray-100 text-gray-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-gray-200 disabled:opacity-50 transition-colors">
+              {paying ? 'Opening…' : '👁 Preview Payment Page'}
+            </button>
+          </div>
+        )}
+        {form.payment_status === 'paid' && (
+          <div className="ml-auto flex gap-2">
+            <button type="button" onClick={handleSendReceiptWhatsapp}
+              className="bg-[#25D366] text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90 transition-colors">
+              📲 Send Receipt
+            </button>
+            <button type="button" onClick={handleSendReceiptEmail} disabled={sendingEmail || !form.customers?.email}
+              title={!form.customers?.email ? 'This customer has no email address on file' : ''}
+              className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {sendingEmail ? 'Sending…' : '✉️ Email Receipt'}
+            </button>
+            <button type="button" onClick={() => setShowRefund(true)}
+              className="bg-amber-100 text-amber-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-amber-200 transition-colors">
+              Mark Refunded
+            </button>
+            <button type="button" onClick={handleMarkDisputed} disabled={actionBusy}
+              className="bg-amber-100 text-amber-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-amber-200 disabled:opacity-50 transition-colors">
+              Mark Disputed
+            </button>
+          </div>
         )}
       </div>
 
@@ -373,6 +552,47 @@ export default function InvoiceDetailPage() {
           </div>
         </div>
       </form>
+
+      {events.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 mt-6">
+          <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wider border-b border-gray-100 pb-2 mb-3">Payment History</h2>
+          <div className="space-y-2">
+            {events.map(ev => (
+              <div key={ev.id} className="flex items-start justify-between text-sm border-b border-gray-50 pb-2 last:border-0 last:pb-0">
+                <div>
+                  <span className="font-medium text-gray-800">{EVENT_LABELS[ev.event_type] || ev.event_type}</span>
+                  {ev.detail && <span className="text-gray-500"> — {ev.detail}</span>}
+                  {ev.actor_name && <span className="text-gray-400"> · {ev.actor_name}</span>}
+                </div>
+                <span className="text-gray-400 whitespace-nowrap ml-3">{formatDateTime(ev.created_at)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showRefund && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="text-base font-bold text-gray-900">Mark Invoice Refunded?</h3>
+            <p className="text-sm text-gray-600">
+              This records the refund in Savvy Works for your own tracking — it does <span className="font-semibold">not</span> process the refund in PayFast. Issue the actual refund from your PayFast dashboard first.
+            </p>
+            <textarea rows={2} value={refundReason} onChange={e => setRefundReason(e.target.value)}
+              placeholder="Reason (optional)" className={inputCls + ' resize-none'} />
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={handleMarkRefunded} disabled={actionBusy}
+                className="flex-1 bg-amber-600 text-white py-2 rounded text-sm font-semibold hover:bg-amber-700 disabled:opacity-50 transition-colors">
+                {actionBusy ? 'Saving…' : 'Confirm Refunded'}
+              </button>
+              <button type="button" onClick={() => setShowRefund(false)}
+                className="flex-1 border border-gray-300 text-gray-600 py-2 rounded text-sm font-medium hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">

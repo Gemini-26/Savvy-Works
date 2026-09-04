@@ -47,6 +47,17 @@ export async function clockOutForWork(shiftId) {
   notifyWorkShiftChanged()
 }
 
+// Called periodically from the browser (Geolocation API) while a shift is
+// open. Doesn't fire the workshift:changed event — this isn't a state
+// change other widgets need to react to, just a background position update.
+export async function updateShiftLocation(shiftId, lat, lng) {
+  const { error } = await supabase
+    .from('work_shifts')
+    .update({ last_lat: lat, last_lng: lng, last_location_at: new Date().toISOString() })
+    .eq('id', shiftId)
+  if (error) throw error
+}
+
 // Most recent closed shifts, newest first — used to show a per-day clock history.
 export async function fetchShiftHistory(technicianId, limit = 30) {
   const { data, error } = await supabase

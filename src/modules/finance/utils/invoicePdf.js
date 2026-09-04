@@ -199,6 +199,13 @@ export async function downloadInvoicePdf(invoice, lineItems, technicians) {
   doc.save(`${invoice.invoice_ref || 'invoice'}.pdf`)
 }
 
+// Base64-encodes the PDF (no data: prefix) for handing off to the
+// send-invoice-receipt Edge Function as an email attachment.
+export async function invoicePdfBase64(invoice, lineItems, technicians) {
+  const doc = await buildInvoicePdf(invoice, lineItems, technicians)
+  return doc.output('datauristring').split(',')[1]
+}
+
 // Opens the PDF in a new tab for on-screen review before the user commits
 // to downloading it — same document, just `output('bloburl')` instead of `save()`.
 export async function previewInvoicePdf(invoice, lineItems, technicians) {

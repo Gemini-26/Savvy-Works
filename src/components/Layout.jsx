@@ -99,6 +99,7 @@ const NAV = [
           { label: 'Overdue',            path: '/finance/invoices/overdue' },
           { label: 'Paid Invoices',      path: '/finance/invoices/paid' },
           { label: 'Search Invoices',    path: '/finance/invoices/search' },
+          { label: 'Payments',           path: '/finance/payments' },
           { label: 'Account Statements', path: '/finance/invoices/statements' },
           { label: 'Reminders',          path: '/finance/invoices/reminders' },
           { label: 'New Recurring',      path: '/finance/invoices/recurring/new' },
@@ -179,6 +180,7 @@ const NAV = [
         heading: 'Users',
         items: [
           { label: 'New User',       path: '/users/new' },
+          { label: 'Live Users',     path: '/users/live' },
           { label: 'Active Users',   path: '/users/active' },
           { label: 'Inactive Users', path: '/users/inactive' },
           { label: 'User Logs',      path: '/users/logs' },

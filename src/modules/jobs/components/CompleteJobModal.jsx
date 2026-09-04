@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import { completeJob } from '../services/jobService'
+import { useState, useEffect } from 'react'
+import { completeJob, fetchJobForPayment } from '../services/jobService'
+import { findInvoiceForJob, createInvoiceFromJob, updateInvoice, createPayfastPayment, buildPayfastPaymentLink, logInvoiceEvent } from '../../finance/services/invoiceService'
+import { buildWhatsappLink } from '../../../shared/utils/whatsapp'
 import SignaturePad from '../../../shared/components/SignaturePad'
 import { PAYMENT_TYPES } from '../../../shared/constants/paymentTypes'
 
@@ -29,9 +31,82 @@ export default function CompleteJobModal({ jobId, signOffName, onClose, onComple
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
 
+  const [job, setJob] = useState(null)
+  const [linkLoading, setLinkLoading] = useState(false)
+  const [paymentLink, setPaymentLink] = useState(null)
+  const [linkError, setLinkError] = useState(null)
+  const [linkInvoiceId, setLinkInvoiceId] = useState(null)
+  const [showAddCharge, setShowAddCharge] = useState(false)
+  const [chargeDescription, setChargeDescription] = useState('')
+  const [chargeAmount, setChargeAmount] = useState('')
+
+  useEffect(() => {
+    fetchJobForPayment(jobId).then(setJob).catch(() => setJob(null))
+  }, [jobId])
+
   function set(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
   }
+
+  async function generateLinkForInvoice(invoiceId) {
+    const payment = await createPayfastPayment(invoiceId)
+    setPaymentLink(buildPayfastPaymentLink(payment))
+  }
+
+  async function handleGetPaymentLink() {
+    setLinkLoading(true)
+    setLinkError(null)
+    setShowAddCharge(false)
+    try {
+      let invoice = await findInvoiceForJob(jobId)
+      if (!invoice) {
+        invoice = await createInvoiceFromJob(job)
+      }
+      if (invoice.status === 'draft') {
+        await updateInvoice(invoice.id, { status: 'outstanding' })
+      }
+      setLinkInvoiceId(invoice.id)
+      await generateLinkForInvoice(invoice.id)
+    } catch (err) {
+      // "no priced items" is the one failure a technician can actually fix
+      // on the spot — offer a quick way to add a charge instead of a dead end.
+      if (err.message?.includes('no priced items')) {
+        setShowAddCharge(true)
+      }
+      setLinkError(err.message || 'Failed to create payment link')
+    } finally {
+      setLinkLoading(false)
+    }
+  }
+
+  async function handleAddChargeAndGenerate() {
+    if (!chargeDescription.trim() || !chargeAmount || Number(chargeAmount) <= 0) {
+      setLinkError('Enter a description and an amount greater than zero.')
+      return
+    }
+    setLinkLoading(true)
+    setLinkError(null)
+    try {
+      let invoiceId = linkInvoiceId
+      if (!invoiceId) {
+        const invoice = await findInvoiceForJob(jobId) || await createInvoiceFromJob(job)
+        invoiceId = invoice.id
+        setLinkInvoiceId(invoiceId)
+      }
+      await updateInvoice(invoiceId, { status: 'outstanding' }, [{
+        description: chargeDescription.trim(), quantity: 1, unit: 'each',
+        unit_price: Number(chargeAmount), tax_rate: 15,
+      }])
+      await generateLinkForInvoice(invoiceId)
+      setShowAddCharge(false)
+    } catch (err) {
+      setLinkError(err.message || 'Failed to add charge')
+    } finally {
+      setLinkLoading(false)
+    }
+  }
+
+  const customerPhone = job?.customers?.mobile || job?.customers?.telephone || ''
 
   function handleNext(e) {
     e.preventDefault()
@@ -182,6 +257,45 @@ export default function CompleteJobModal({ jobId, signOffName, onClose, onComple
                 {PAYMENT_TYPES.map(t => <option key={t}>{t}</option>)}
               </select>
             </Field>
+
+            {paymentType === 'Payment Link' && (
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-2">
+                {linkError && <p className="text-xs text-red-600">{linkError}</p>}
+                {!paymentLink && !showAddCharge && (
+                  <button type="button" onClick={handleGetPaymentLink} disabled={linkLoading}
+                    className="w-full bg-blue-600 text-white py-2 rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    {linkLoading ? 'Generating link…' : '🔗 Generate Payment Link'}
+                  </button>
+                )}
+                {!paymentLink && showAddCharge && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-600">Add what the customer owes for this job, then generate the link:</p>
+                    <input value={chargeDescription} onChange={e => setChargeDescription(e.target.value)}
+                      placeholder="e.g. Callout + labour" className={inputCls} />
+                    <input type="number" min="0" step="0.01" value={chargeAmount} onChange={e => setChargeAmount(e.target.value)}
+                      placeholder="Amount (R, excl. tax)" className={inputCls} />
+                    <button type="button" onClick={handleAddChargeAndGenerate} disabled={linkLoading}
+                      className="w-full bg-blue-600 text-white py-2 rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                      {linkLoading ? 'Adding…' : '🔗 Add Charge & Generate Link'}
+                    </button>
+                  </div>
+                )}
+                {paymentLink && (
+                  <>
+                    <a href={paymentLink} target="_blank" rel="noreferrer"
+                      className="block w-full text-center bg-green-600 text-white py-2 rounded text-sm font-semibold hover:bg-green-700 transition-colors">
+                      💳 Open Payment Page
+                    </a>
+                    <a href={buildWhatsappLink(customerPhone, `Hi ${customerName || ''}, here is your payment link for ${job?.title || 'your job'}: ${paymentLink}`)}
+                      target="_blank" rel="noreferrer"
+                      onClick={() => linkInvoiceId && logInvoiceEvent(linkInvoiceId, 'link_sent_whatsapp', `Sent to ${customerPhone || 'customer'} on-site`).catch(() => {})}
+                      className="block w-full text-center bg-[#25D366] text-white py-2 rounded text-sm font-semibold hover:opacity-90 transition-colors">
+                      📲 Send via WhatsApp{!customerPhone && ' (no number on file — choose a contact)'}
+                    </a>
+                  </>
+                )}
+              </div>
+            )}
 
             <div className="flex gap-3 pt-2">
               <button

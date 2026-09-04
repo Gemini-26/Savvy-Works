@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Clock, X } from 'lucide-react'
+import { Clock, X, MapPin, MapPinOff } from 'lucide-react'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
+import { useLocationTracking } from '../../hooks/useLocationTracking'
 import { fetchActiveShift, clockInForWork, clockOutForWork, onWorkShiftChange } from '../services/workShiftService'
 
 function formatElapsed(ms) {
@@ -37,6 +38,8 @@ export default function ClockBubble() {
     const id = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(id)
   }, [shift])
+
+  const location = useLocationTracking(shift?.id ?? null)
 
   if (!profile?.id || !loaded) return null
 
@@ -80,6 +83,31 @@ export default function ClockBubble() {
               <p className="text-xs text-gray-500 mb-3">
                 Clocked in at {new Date(shift.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </p>
+
+              <div className="flex items-center justify-between mb-1 py-1.5 border-t border-b border-gray-100">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-gray-700">
+                  {location.enabled ? <MapPin size={13} className="text-emerald-600" /> : <MapPinOff size={13} className="text-gray-400" />}
+                  Share my location
+                </span>
+                <button
+                  role="switch"
+                  aria-checked={location.enabled}
+                  onClick={() => location.toggle(!location.enabled)}
+                  className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${location.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                >
+                  <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${location.enabled ? 'translate-x-4' : ''}`} />
+                </button>
+              </div>
+              {location.enabled && (
+                <p className={`text-[11px] mb-3 ${location.status === 'denied' ? 'text-red-600' : location.status === 'granted' ? 'text-emerald-600' : 'text-gray-400'}`}>
+                  {location.status === 'requesting' && 'Waiting for browser permission…'}
+                  {location.status === 'granted' && 'Sharing your live location.'}
+                  {location.status === 'denied' && "Blocked — allow location in your browser's site settings, then toggle off/on."}
+                  {location.status === 'unsupported' && 'Location isn’t available on this device/browser.'}
+                </p>
+              )}
+              {!location.enabled && <div className="mb-3" />}
+
               <button
                 disabled={busy}
                 onClick={handleClockOut}
