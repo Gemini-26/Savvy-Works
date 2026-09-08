@@ -32,3 +32,7 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+
+# Local PayFast credentials for scripts/payfast-doctor.mjs — never commit
+.env.payfast
+.payfast-secrets.*.tmp

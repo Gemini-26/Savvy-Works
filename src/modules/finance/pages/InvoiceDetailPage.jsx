@@ -158,9 +158,11 @@ export default function InvoiceDetailPage() {
   }
 
   // Opens the PayFast checkout in a new tab so an admin can see exactly what the
-  // customer will see — this does not charge anyone here, it's a preview only.
-  // The customer's actual payment happens when they open the link sent via
-  // handleSendWhatsapp, in their own browser.
+  // customer will see. "Preview" describes who is looking, not what the page can
+  // do: against the live gateway this is a real checkout, and completing it takes
+  // a real payment. Only the sandbox gateway makes it harmless. Opening it is
+  // safe either way — nothing is charged until the checkout is completed — but
+  // don't treat this as a dry run when PAYFAST_PROCESS_URL points at live.
   async function handlePreviewPayment() {
     setPaying(true)
     setError(null)
