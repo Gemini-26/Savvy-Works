@@ -179,7 +179,12 @@ export default function InvoiceDetailPage() {
       })
       document.body.appendChild(payForm)
       payForm.submit()
-      payForm.remove()
+      // Removing the form node immediately after submit() can race the
+      // browser's async handling of a target="_blank" submission — on some
+      // browsers this drops or corrupts the POST body entirely (PayFast then
+      // sees no data, or a truncated one that fails signature validation).
+      // Deferring the removal lets the browser finish reading the form first.
+      setTimeout(() => payForm.remove(), 1000)
     } catch (err) {
       setError(err.message || 'Failed to open payment preview')
     } finally {

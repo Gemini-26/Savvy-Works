@@ -40,6 +40,7 @@ import PurchaseOrdersPage from '../modules/finance/pages/PurchaseOrdersPage'
 import NewPurchaseOrderPage from '../modules/finance/pages/NewPurchaseOrderPage'
 import PurchaseOrderDetailPage from '../modules/finance/pages/PurchaseOrderDetailPage'
 import UserTimesheetsReportPage from '../modules/reports/pages/UserTimesheetsReportPage'
+import ChangeRequestsPage from '../modules/users/pages/ChangeRequestsPage'
 
 export const moduleRoutes = [
 
@@ -235,6 +236,7 @@ export const moduleRoutes = [
   { path: 'settings/triggers',      title: 'Triggers' },
   { path: 'settings/leads',         title: 'Lead Settings' },
   { path: 'settings/users',         title: 'User Settings' },
+  { path: 'settings/change-requests', element: <ChangeRequestsPage />,  title: 'Change Requests' },
   { path: 'settings/crm',           title: 'CRM Settings' },
 ]
 

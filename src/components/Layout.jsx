@@ -268,6 +268,7 @@ const NAV = [
         heading: 'General',
         items: [
           { label: 'General Settings',  path: '/settings/general' },
+          { label: 'Change Requests',   path: '/settings/change-requests' },
           { label: 'Digital Documents', path: '/settings/documents' },
           { label: 'Questionnaires',    path: '/settings/questionnaires' },
           { label: 'Template Editor',   path: '/settings/templates' },

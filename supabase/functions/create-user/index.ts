@@ -41,10 +41,30 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Only admins may create new users
+    const { data: callerProfile, error: callerProfileError } = await adminClient
+      .from('profiles')
+      .select('company_id, role')
+      .eq('auth_user_id', caller.id)
+      .maybeSingle()
+
+    if (callerProfileError || !callerProfile || callerProfile.role !== 'admin') {
+      return new Response(JSON.stringify({ error: 'Only admins can create users' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     const { email, password, full_name, role, phone, color } = await req.json()
 
     if (!email || !password || !full_name) {
       return new Response(JSON.stringify({ error: 'email, password and full_name are required' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const allowedRoles = ['admin', 'manager', 'technician']
+    if (role !== undefined && !allowedRoles.includes(role)) {
+      return new Response(JSON.stringify({ error: 'Invalid role' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -66,14 +86,7 @@ Deno.serve(async (req) => {
 
     const newUserId = authData.user.id
 
-    // Step 2: look up the caller's company_id so the new profile inherits it
-    const { data: callerProfile } = await adminClient
-      .from('profiles')
-      .select('company_id')
-      .eq('auth_user_id', caller.id)
-      .maybeSingle()
-
-    // Step 3: create the profile row directly (no trigger needed)
+    // Step 2: create the profile row directly (no trigger needed), inheriting the caller's company_id
     const { error: profileError } = await adminClient
       .from('profiles')
       .insert({
