@@ -3,7 +3,7 @@ import { nextPurchaseOrderNumber } from '../../../shared/utils/generateDocumentN
 
 const PAGE_SIZE = 50
 
-export async function fetchPurchaseOrders(statusFilter, page = 0) {
+export async function fetchPurchaseOrders(statusFilter, page = 0, paymentMethodFilter = '') {
   let query = supabase
     .from('purchase_orders')
     .select('*', { count: 'exact' })
@@ -14,6 +14,12 @@ export async function fetchPurchaseOrders(statusFilter, page = 0) {
     query = query.eq('status', statusFilter)
   }
 
+  if (paymentMethodFilter === 'none') {
+    query = query.is('payment_method', null)
+  } else if (paymentMethodFilter) {
+    query = query.eq('payment_method', paymentMethodFilter)
+  }
+
   const { data, error, count } = await query
   if (error) throw error
   return { data, count, page, pageSize: PAGE_SIZE }
@@ -22,7 +28,13 @@ export async function fetchPurchaseOrders(statusFilter, page = 0) {
 export async function fetchPurchaseOrder(id) {
   const { data, error } = await supabase
     .from('purchase_orders')
-    .select('*, purchase_order_items(*)')
+    .select(`*, purchase_order_items(*),
+      suppliers(name, contact_name, email, phone, mobile, address, city, county, postcode),
+      customers(customer_name),
+      customer_sites(site_name, address_line_1, city, province, postal_code),
+      quotes(quote_ref, title),
+      jobs(job_ref, title),
+      invoices(invoice_ref, title)`)
     .eq('id', id)
     .maybeSingle()
 

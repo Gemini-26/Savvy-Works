@@ -4,7 +4,7 @@ import { getCurrentProfile } from '../../../services/authService'
 
 const PAGE_SIZE = 50
 
-export async function fetchInvoices(statusFilter, page = 0, search = '') {
+export async function fetchInvoices(statusFilter, page = 0, search = '', paymentMethodFilter = '') {
   let query = supabase
     .from('invoices')
     .select('*, customers(customer_name)', { count: 'exact' })
@@ -19,6 +19,12 @@ export async function fetchInvoices(statusFilter, page = 0, search = '') {
     query = query.not('status', 'in', '("cancelled","paid","draft")')
   } else if (statusFilter) {
     query = query.eq('status', statusFilter)
+  }
+
+  if (paymentMethodFilter === 'none') {
+    query = query.is('payment_method', null)
+  } else if (paymentMethodFilter) {
+    query = query.eq('payment_method', paymentMethodFilter)
   }
 
   const { data, error, count } = await query

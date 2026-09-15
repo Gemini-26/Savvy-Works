@@ -8,6 +8,7 @@ import SearchBar from '../../../shared/components/SearchBar'
 import { fetchInvoices } from '../services/invoiceService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
+import { PAYMENT_METHODS } from '../../../shared/constants/paymentTypes'
 
 const STATUS_COLORS = {
   draft:       'bg-gray-100 text-gray-600',
@@ -24,6 +25,25 @@ function StatusBadge({ status }) {
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${cls}`}>
       {label}
+    </span>
+  )
+}
+
+const METHOD_COLORS = {
+  PayFast: 'bg-indigo-100 text-indigo-700',
+  Cash: 'bg-green-100 text-green-700',
+  Card: 'bg-slate-100 text-slate-700',
+  EFT: 'bg-cyan-100 text-cyan-700',
+  'Account (30-Day)': 'bg-amber-100 text-amber-700',
+  'Account (60-Day)': 'bg-amber-100 text-amber-700',
+  'Insurance Claim': 'bg-purple-100 text-purple-700',
+}
+
+function PaymentMethodBadge({ method }) {
+  if (!method) return <span className="text-xs text-gray-300">—</span>
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${METHOD_COLORS[method] ?? 'bg-gray-100 text-gray-600'}`}>
+      {method}
     </span>
   )
 }
@@ -46,6 +66,7 @@ export default function InvoicesPage({ statusFilter }) {
   const [error,       setError]       = useState(null)
   const [search,      setSearch]      = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [methodFilter, setMethodFilter] = useState('')
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -57,14 +78,14 @@ export default function InvoicesPage({ statusFilter }) {
     setTotal(0)
     setPage(0)
     load(0, true)
-  }, [location.key, statusFilter, debouncedSearch])
+  }, [location.key, statusFilter, debouncedSearch, methodFilter])
 
   async function load(pageNum, replace = false) {
     if (replace) setLoading(true)
     else setLoadingMore(true)
     setError(null)
     try {
-      const result = await fetchInvoices(statusFilter, pageNum, debouncedSearch)
+      const result = await fetchInvoices(statusFilter, pageNum, debouncedSearch, methodFilter)
       setTotal(result.count ?? 0)
       setInvoices(prev => replace ? result.data : [...prev, ...result.data])
       setPage(pageNum)
@@ -91,8 +112,20 @@ export default function InvoicesPage({ statusFilter }) {
         </button>
       </div>
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search by invoice # or title…" />
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex-1">
+          <SearchBar value={search} onChange={setSearch} placeholder="Search by invoice # or title…" />
+        </div>
+        <select
+          value={methodFilter}
+          onChange={e => setMethodFilter(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="">All Payment Methods</option>
+          <option value="PayFast">PayFast</option>
+          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+          <option value="none">Not recorded</option>
+        </select>
       </div>
 
       {error && (
@@ -120,6 +153,7 @@ export default function InvoicesPage({ statusFilter }) {
                 <th className="text-left px-5 py-3">Due</th>
                 <th className="text-right px-5 py-3">Total</th>
                 <th className="text-left px-5 py-3">Status</th>
+                <th className="text-left px-5 py-3">Payment Method</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -136,6 +170,7 @@ export default function InvoicesPage({ statusFilter }) {
                   <td className="px-5 py-3 text-gray-600">{formatDate(inv.due_date)}</td>
                   <td className="px-5 py-3 text-right font-medium text-gray-900">{formatCurrency(inv.total)}</td>
                   <td className="px-5 py-3"><StatusBadge status={inv.status} /></td>
+                  <td className="px-5 py-3"><PaymentMethodBadge method={inv.payment_method} /></td>
                 </tr>
               ))}
             </tbody>

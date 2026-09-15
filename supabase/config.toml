@@ -434,3 +434,16 @@ entrypoint = "./functions/create-user/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/create-user/*.html" ]
+
+[functions.payfast-itn]
+enabled = true
+# PayFast's ITN is a server-to-server POST authenticated by its own MD5
+# signature (verified in code below) — it never carries a Supabase auth
+# header, so gateway-level JWT verification must stay off here or every
+# real notification is rejected with 401 before the handler ever runs.
+# Without this explicit section, a plain `supabase functions deploy` falls
+# back to the CLI default (verify_jwt = true) and silently re-breaks it —
+# which is what happened during the 2026-09-08 live credential swap.
+verify_jwt = false
+import_map = "./functions/payfast-itn/deno.json"
+entrypoint = "./functions/payfast-itn/index.ts"

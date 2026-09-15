@@ -13,6 +13,7 @@ import { fetchJobTechnicianSummary } from '../../planner/services/appointmentSer
 import { downloadInvoicePdf, previewInvoicePdf, invoicePdfBase64 } from '../utils/invoicePdf'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
+import { PAYMENT_METHODS } from '../../../shared/constants/paymentTypes'
 import { Eye } from 'lucide-react'
 
 function formatDateTime(iso) {
@@ -42,6 +43,16 @@ const PAYMENT_STATUS_LABELS = {
 
 const PAYMENT_STATUS_COLORS = {
   failed: 'bg-red-100 text-red-600', refunded: 'bg-amber-100 text-amber-700', disputed: 'bg-amber-100 text-amber-700',
+}
+
+const METHOD_COLORS = {
+  PayFast: 'bg-indigo-100 text-indigo-700',
+  Cash: 'bg-green-100 text-green-700',
+  Card: 'bg-slate-100 text-slate-700',
+  EFT: 'bg-cyan-100 text-cyan-700',
+  'Account (30-Day)': 'bg-amber-100 text-amber-700',
+  'Account (60-Day)': 'bg-amber-100 text-amber-700',
+  'Insurance Claim': 'bg-purple-100 text-purple-700',
 }
 
 const EVENT_LABELS = {
@@ -118,14 +129,21 @@ export default function InvoiceDetailPage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    setSaving(true)
     setError(null)
+
+    // Marking status "Paid" by hand (e.g. cash/EFT taken outside PayFast) must
+    // also flip payment_status — it's a separate column the PayFast webhook
+    // sets together, and the "Send via WhatsApp"/"Preview Payment" actions key
+    // off payment_status, not status. Without this, a manually-paid invoice
+    // still shows those buttons as if it were unpaid.
+    const markingPaidManually = form.status === 'paid' && form.payment_status !== 'paid' && !form.payfast_payment_id
+    if (markingPaidManually && !form.payment_method) {
+      setError('Pick how this invoice was paid (Cash, EFT, Account, …) before marking it paid.')
+      return
+    }
+
+    setSaving(true)
     try {
-      // Marking status "Paid" by hand (e.g. cash/EFT taken outside PayFast) must
-      // also flip payment_status — it's a separate column the PayFast webhook
-      // sets together, and the "Send via WhatsApp"/"Preview Payment" actions key
-      // off payment_status, not status. Without this, a manually-paid invoice
-      // still shows those buttons as if it were unpaid.
       const paymentFields = (form.status === 'paid' && form.payment_status !== 'paid')
         ? { payment_status: 'paid', paid_at: form.paid_at || new Date().toISOString() }
         : {}
@@ -142,11 +160,12 @@ export default function InvoiceDetailPage() {
         site_postcode: form.site_postcode || null,
         notes:         form.notes         || null,
         terms:         form.terms         || null,
+        payment_method: form.payfast_payment_id ? 'PayFast' : (form.payment_method || null),
         ...paymentFields,
       }, lineItems)
 
       if (paymentFields.payment_status) {
-        await logInvoiceEvent(id, 'payment_completed', 'Marked paid manually (cash/EFT/other)')
+        await logInvoiceEvent(id, 'payment_completed', `Marked paid manually via ${form.payment_method || 'unrecorded method'}`)
       }
       setEditing(false)
       load()
@@ -337,6 +356,11 @@ export default function InvoiceDetailPage() {
             {PAYMENT_STATUS_LABELS[form.payment_status]}
           </span>
         )}
+        {form.payment_method && (
+          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${METHOD_COLORS[form.payment_method] ?? 'bg-gray-100 text-gray-600'}`}>
+            {form.payment_method}
+          </span>
+        )}
         {form.job_id && (
           <button onClick={() => navigate(`/jobs/${form.job_id}`)} className="text-xs text-teal-600 hover:underline">
             View source job →
@@ -395,6 +419,18 @@ export default function InvoiceDetailPage() {
                 : <select value={form.status} onChange={e => set('status', e.target.value)} className={inputCls}>
                     {STATUSES.map(s => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
                   </select>
+              }
+            </Field>
+
+            <Field label="Payment Method">
+              {form.payfast_payment_id
+                ? <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${METHOD_COLORS.PayFast}`} title="Confirmed by PayFast's webhook — not editable.">PayFast</span>
+                : ro
+                  ? <p className="py-1.5 text-sm text-gray-800">{form.payment_method || '—'}</p>
+                  : <select value={form.payment_method || ''} onChange={e => set('payment_method', e.target.value)} className={inputCls}>
+                      <option value="">— Not recorded —</option>
+                      {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
               }
             </Field>
 

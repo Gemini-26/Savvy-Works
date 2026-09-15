@@ -6,6 +6,7 @@ import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { useItems } from '../hooks/useItems'
 import LineItemsEditor from '../components/LineItemsEditor'
+import { downloadQuotePdf } from '../utils/quotePdf'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
 
@@ -160,10 +161,16 @@ export default function QuoteDetailPage() {
               </button>
             </Fragment>
           ) : (
-            <button key="view-actions" type="button" onClick={() => setEditing(true)}
-              className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-700 transition-colors">
-              ✏️ Edit
-            </button>
+            <Fragment key="view-actions">
+              <button type="button" onClick={() => setEditing(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-700 transition-colors">
+                ✏️ Edit
+              </button>
+              <button type="button" onClick={() => downloadQuotePdf(form, lineItems)}
+                className="bg-gray-700 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-gray-800 transition-colors">
+                ⬇ Download PDF
+              </button>
+            </Fragment>
           )}
           <button type="button" onClick={() => navigate(-1)}
             className="bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-600 transition-colors">

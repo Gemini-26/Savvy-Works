@@ -151,6 +151,7 @@ Deno.serve(async (req) => {
           payfast_payment_id: fields.pf_payment_id ?? null,
           paid_at: new Date().toISOString(),
           status: 'paid',
+          payment_method: 'PayFast',
         })
         .eq('id', invoice.id)
 

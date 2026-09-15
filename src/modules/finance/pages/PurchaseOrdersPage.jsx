@@ -7,6 +7,7 @@ import PaginationBar from '../../../shared/components/PaginationBar'
 import { fetchPurchaseOrders } from '../services/purchaseOrderService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
+import { PAYMENT_METHODS } from '../../../shared/constants/paymentTypes'
 
 const STATUS_COLORS = {
   draft:             'bg-gray-100 text-gray-600',
@@ -23,6 +24,24 @@ function StatusBadge({ status }) {
   return (
     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${cls}`}>
       {label}
+    </span>
+  )
+}
+
+const METHOD_COLORS = {
+  Cash: 'bg-green-100 text-green-700',
+  Card: 'bg-slate-100 text-slate-700',
+  EFT: 'bg-cyan-100 text-cyan-700',
+  'Account (30-Day)': 'bg-amber-100 text-amber-700',
+  'Account (60-Day)': 'bg-amber-100 text-amber-700',
+  'Insurance Claim': 'bg-purple-100 text-purple-700',
+}
+
+function PaymentMethodBadge({ method }) {
+  if (!method) return <span className="text-xs text-gray-300">—</span>
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${METHOD_COLORS[method] ?? 'bg-gray-100 text-gray-600'}`}>
+      {method}
     </span>
   )
 }
@@ -45,20 +64,21 @@ export default function PurchaseOrdersPage({ statusFilter }) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
+  const [methodFilter, setMethodFilter] = useState('')
 
   useEffect(() => {
     setPos([])
     setTotal(0)
     setPage(0)
     load(0, true)
-  }, [location.key, statusFilter])
+  }, [location.key, statusFilter, methodFilter])
 
   async function load(pageNum, replace = false) {
     if (replace) setLoading(true)
     else setLoadingMore(true)
     setError(null)
     try {
-      const result = await fetchPurchaseOrders(statusFilter, pageNum)
+      const result = await fetchPurchaseOrders(statusFilter, pageNum, methodFilter)
       setTotal(result.count ?? 0)
       setPos(prev => replace ? result.data : [...prev, ...result.data])
       setPage(pageNum)
@@ -83,6 +103,18 @@ export default function PurchaseOrdersPage({ statusFilter }) {
         >
           + New Purchase Order
         </button>
+      </div>
+
+      <div className="mb-4 flex items-center justify-end">
+        <select
+          value={methodFilter}
+          onChange={e => setMethodFilter(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="">All Payment Methods</option>
+          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+          <option value="none">Not recorded</option>
+        </select>
       </div>
 
       {error && (
@@ -110,6 +142,7 @@ export default function PurchaseOrdersPage({ statusFilter }) {
                 <th className="text-left px-5 py-3">Due</th>
                 <th className="text-right px-5 py-3">Total</th>
                 <th className="text-left px-5 py-3">Status</th>
+                <th className="text-left px-5 py-3">Payment Method</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -126,6 +159,7 @@ export default function PurchaseOrdersPage({ statusFilter }) {
                   <td className="px-5 py-3 text-gray-600">{po.due_date ? formatDate(po.due_date) : '—'}</td>
                   <td className="px-5 py-3 text-right font-medium text-gray-900">{formatCurrency(po.total)}</td>
                   <td className="px-5 py-3"><StatusBadge status={po.status} /></td>
+                  <td className="px-5 py-3"><PaymentMethodBadge method={po.payment_method} /></td>
                 </tr>
               ))}
             </tbody>

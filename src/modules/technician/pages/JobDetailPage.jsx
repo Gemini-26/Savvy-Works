@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip } from 'lucide-react'
-import { fetchMyAppointment, respondToAppointment, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
+import { fetchMyAppointment, respondToAppointment, updateAppointmentStatus, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
+import { APPOINTMENT_STATUS_META, TECH_UPDATABLE_STATUSES } from '../../../shared/constants/appointmentStatuses'
 import { fetchJobPhotos, uploadJobPhoto, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument } from '../../jobs/services/jobService'
 import { fetchAssignmentTeamMembers, setAssignmentTeamMembers } from '../../users/services/teamMembersService'
 import CompleteJobModal from '../../jobs/components/CompleteJobModal'
@@ -51,11 +52,24 @@ export default function JobDetailPage({ profile }) {
     }
   }
 
+  async function updateStatus(status) {
+    setBusy(true)
+    try {
+      await updateAppointmentStatus(appt.id, status)
+      await load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   async function handleClockInConfirm(selectedTeamMemberIds) {
     setBusy(true)
     try {
       await clockIn(appt.assignmentId)
       await setAssignmentTeamMembers(appt.assignmentId, selectedTeamMemberIds)
+      if (appt.status !== 'on_site') {
+        await updateAppointmentStatus(appt.id, 'on_site')
+      }
       await load()
     } finally {
       setBusy(false)
@@ -124,6 +138,7 @@ export default function JobDetailPage({ profile }) {
   if (!appt) return <div className="p-4 text-sm text-red-600">Job not found.</div>
 
   const job = appt.jobs
+  const statusMeta = APPOINTMENT_STATUS_META[appt.status]
   const isPending = PENDING_RESPONSE_STATUSES.includes(appt.status)
   const isAccepted = appt.status === 'accepted' || appt.status === 'on_route' || appt.status === 'on_site'
   const isPendingConfirmation = job?.status === 'pending_confirmation'
@@ -138,7 +153,12 @@ export default function JobDetailPage({ profile }) {
     <div className="pb-6">
       <div className="sticky top-0 bg-gray-50 px-4 py-3 flex items-center gap-2 border-b border-gray-200 z-10">
         <button onClick={() => navigate(-1)} className="p-1 text-gray-500"><ArrowLeft size={18} /></button>
-        <h1 className="text-sm font-bold text-gray-900 truncate">{job?.title || job?.job_ref}</h1>
+        <h1 className="text-sm font-bold text-gray-900 truncate flex-1">{job?.title || job?.job_ref}</h1>
+        {statusMeta && (
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold px-2 py-1 rounded-full text-white shrink-0" style={{ backgroundColor: statusMeta.dot }}>
+            {statusMeta.label}
+          </span>
+        )}
       </div>
 
       <div className="p-4 space-y-4">
@@ -195,6 +215,32 @@ export default function JobDetailPage({ profile }) {
                 Complete Job
               </button>
             )}
+          </div>
+        )}
+
+        {isAccepted && !isCompleted && !isPendingConfirmation && (
+          <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Update Status</p>
+            {appt.status === 'accepted' && (
+              <button
+                disabled={busy}
+                onClick={() => updateStatus('on_route')}
+                className="w-full bg-orange-500 text-white text-sm font-semibold py-2.5 rounded-lg disabled:opacity-50"
+              >
+                🚐 On Route — Notify Customer
+              </button>
+            )}
+            <select
+              disabled={busy}
+              value=""
+              onChange={e => e.target.value && updateStatus(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white text-gray-600"
+            >
+              <option value="">More status options…</option>
+              {TECH_UPDATABLE_STATUSES.filter(s => s !== appt.status).map(s => (
+                <option key={s} value={s}>{APPOINTMENT_STATUS_META[s].label}</option>
+              ))}
+            </select>
           </div>
         )}
 

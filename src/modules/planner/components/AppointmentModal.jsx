@@ -7,21 +7,11 @@ import {
   updateAppointmentTechnicians,
   deleteAppointment,
 } from '../services/appointmentService'
+import { APPOINTMENT_STATUS_META } from '../../../shared/constants/appointmentStatuses'
 
-const STATUSES = [
-  { value: 'not_dispatched', label: 'Not Dispatched' },
-  { value: 'awaiting',       label: 'Awaiting' },
-  { value: 'received',       label: 'Received' },
-  { value: 'accepted',       label: 'Accepted' },
-  { value: 'declined',       label: 'Declined' },
-  { value: 'on_route',       label: 'On Route' },
-  { value: 'on_site',        label: 'On Site' },
-  { value: 'completed',      label: 'Completed' },
-  { value: 'follow_on',      label: 'Follow On' },
-  { value: 'abandoned',      label: 'Abandoned' },
-  { value: 'no_access',      label: 'No Access' },
-  { value: 'cancelled',      label: 'Cancelled' },
-]
+const STATUSES = Object.entries(APPOINTMENT_STATUS_META).map(([value, meta]) => ({
+  value, label: meta.label,
+}))
 
 const inputCls = 'w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 

@@ -3,6 +3,7 @@ import { getCurrentProfile } from '../../../services/authService'
 import { logActivity } from '../../../shared/services/activityService'
 import { notifyAdmins } from '../../../shared/services/notificationService'
 import { clockInAssignment, clockOutAssignment } from '../../planner/services/appointmentService'
+import { APPOINTMENT_STATUS_META, CUSTOMER_NOTIFIED_STATUSES } from '../../../shared/constants/appointmentStatuses'
 
 // Statuses where the technician has not yet responded to the assignment.
 export const PENDING_RESPONSE_STATUSES = ['not_dispatched', 'awaiting', 'received']
@@ -80,6 +81,44 @@ export async function respondToAppointment(appointmentId, status) {
       title: `Job ${verb}`,
       body: `${profile?.full_name || 'A technician'} ${verb} "${jobLabel}".`,
       link: `/jobs/${appt.job_id}`,
+    }).catch(() => {})
+  }
+}
+
+// Technician-driven status update after acceptance (On Route, On Site,
+// No Access, On Hold, Awaiting Auth, Follow On, Abandoned). Logs the change,
+// notifies admins so the Time Planner reflects it immediately, and — for
+// statuses in CUSTOMER_NOTIFIED_STATUSES — emails the customer directly.
+export async function updateAppointmentStatus(appointmentId, status) {
+  const { data: appt, error: fetchErr } = await supabase
+    .from('appointments')
+    .select('job_id, jobs(title, job_ref)')
+    .eq('id', appointmentId)
+    .maybeSingle()
+  if (fetchErr) throw fetchErr
+
+  const { error } = await supabase
+    .from('appointments')
+    .update({ status })
+    .eq('id', appointmentId)
+  if (error) throw error
+
+  const profile = await getCurrentProfile().catch(() => null)
+  const jobLabel = appt?.jobs?.title || appt?.jobs?.job_ref || 'a job'
+  const label = APPOINTMENT_STATUS_META[status]?.label || status
+
+  if (appt?.job_id) {
+    await logActivity(appt.job_id, 'technician_status_update', `${profile?.full_name || 'Technician'} set "${jobLabel}" to ${label}`).catch(() => {})
+    await notifyAdmins({
+      title: `Job status: ${label}`,
+      body: `${profile?.full_name || 'A technician'} marked "${jobLabel}" as ${label}.`,
+      link: `/jobs/${appt.job_id}`,
+    }).catch(() => {})
+  }
+
+  if (CUSTOMER_NOTIFIED_STATUSES.has(status)) {
+    await supabase.functions.invoke('notify-customer-status', {
+      body: { appointment_id: appointmentId, status },
     }).catch(() => {})
   }
 }

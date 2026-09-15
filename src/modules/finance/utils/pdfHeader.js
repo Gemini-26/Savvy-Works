@@ -29,9 +29,58 @@ export async function loadBrandingImages() {
   return Object.fromEntries(entries)
 }
 
+export const COMPANY_NAME = 'Savvy Civils & Plumbing'
+
+// Registered address — also used as the default "deliver to" block on a
+// Purchase Order when no customer/site is picked (i.e. stock delivered to
+// our own premises rather than drop-shipped to a customer).
+export const COMPANY_ADDRESS_LINES = [
+  '13 Bartlett Road,',
+  'Beyers Park,',
+  'Boksburg',
+  'Johannesburg',
+  'South Africa',
+  '1459',
+]
+
+const COMPANY_CONTACT_LINES = [
+  'Tel: +27-11 894 3942/087 806 6262',
+  'Fax:',
+]
+
+const COMPANY_META_LINES = [
+  'Email: sales@savvyplumbing.co.za',
+  'Web: sales@savvyplumbing.co.za',
+  'Company Reg: 2018/397154/07',
+  'VAT No: 4050292590',
+]
+
+// Right-aligned company details block — the "who this document is from" side
+// of the letterhead. Shared by every document's header so the overhead stays
+// byte-for-byte identical across invoices, POs and quotes.
+export function drawCompanyBlock(doc, { pageW, marginX, marginTop }) {
+  let ry = marginTop
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(9)
+  doc.setTextColor(20, 20, 20)
+  doc.text(COMPANY_NAME.toUpperCase(), pageW - marginX, ry, { align: 'right' })
+  ry += 12
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8)
+  doc.setTextColor(100, 100, 100)
+  const lines = [...COMPANY_ADDRESS_LINES, ...COMPANY_CONTACT_LINES]
+  lines.forEach(line => { doc.text(line, pageW - marginX, ry, { align: 'right' }); ry += 10 })
+  ry += 4
+
+  COMPANY_META_LINES.forEach(line => { doc.text(line, pageW - marginX, ry, { align: 'right' }); ry += 10 })
+
+  return ry
+}
+
 // Shared letterhead: logo + accreditation marks + document title/ref on the
-// left, company details on the right. Used by both the invoice and purchase
-// order PDFs so the two documents share the same overhead format.
+// left, company details on the right. Used by the invoice PDF (the purchase
+// order PDF has its own header layout — see purchaseOrderPdf.js).
 export function drawPdfHeader(doc, branding, { title, ref, marginX, pageW, marginTop }) {
   let y = marginTop
 
@@ -55,36 +104,7 @@ export function drawPdfHeader(doc, branding, { title, ref, marginX, pageW, margi
   doc.text(ref || '—', marginX, ly)
   ly += 15
 
-  // Company details, right-aligned, at the top.
-  let ry = y
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(9)
-  doc.setTextColor(20, 20, 20)
-  doc.text('SAVVY CIVILS & PLUMBING', pageW - marginX, ry, { align: 'right' })
-  ry += 12
-
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8)
-  doc.setTextColor(100, 100, 100)
-  const companyLines = [
-    '13 Bartlett Road,',
-    'Beyers Park,',
-    'Boksburg',
-    'Johannesburg',
-    'South Africa',
-    '1459',
-    'Tel: +27-11 894 3942/087 806 6262',
-  ]
-  companyLines.forEach(line => { doc.text(line, pageW - marginX, ry, { align: 'right' }); ry += 10 })
-  ry += 4
-
-  const companyMeta = [
-    'Email: sales@savvyplumbing.co.za',
-    'Web: sales@savvyplumbing.co.za',
-    'Company Reg: 2018/397154/07',
-    'VAT No: 4050292590',
-  ]
-  companyMeta.forEach(line => { doc.text(line, pageW - marginX, ry, { align: 'right' }); ry += 10 })
+  const ry = drawCompanyBlock(doc, { pageW, marginX, marginTop: y })
 
   y = Math.max(ly, ry) + 10
   doc.setDrawColor(220, 220, 220)

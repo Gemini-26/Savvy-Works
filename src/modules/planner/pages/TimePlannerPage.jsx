@@ -3,6 +3,7 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { fetchAppointmentsForDay } from '../services/appointmentService'
 import AppointmentModal from '../components/AppointmentModal'
+import { APPOINTMENT_STATUS_META as STATUS_META } from '../../../shared/constants/appointmentStatuses'
 
 // ─── Grid constants ───────────────────────────────────────────────────────────
 const DAY_START = 6     // 06:00
@@ -12,22 +13,6 @@ const ROW_H     = 60    // px per technician row
 const NAME_W    = 208   // px for the left name column
 const HOURS     = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i)
 const GRID_W    = HOURS.length * CELL_W
-
-// ─── Appointment status config ────────────────────────────────────────────────
-const STATUS_META = {
-  not_dispatched: { label: 'Not Dispatched', dot: '#44403c', bar: 'bg-stone-600'   },
-  awaiting:       { label: 'Awaiting',        dot: '#06b6d4', bar: 'bg-cyan-500'   },
-  received:       { label: 'Received',        dot: '#14b8a6', bar: 'bg-teal-500'   },
-  accepted:       { label: 'Accepted',        dot: '#65a30d', bar: 'bg-lime-600'   },
-  declined:       { label: 'Declined',        dot: '#ef4444', bar: 'bg-red-500'    },
-  on_route:       { label: 'On Route',        dot: '#f97316', bar: 'bg-orange-500' },
-  on_site:        { label: 'On Site',         dot: '#1e293b', bar: 'bg-slate-800'  },
-  completed:      { label: 'Completed',       dot: '#16a34a', bar: 'bg-green-600'  },
-  follow_on:      { label: 'Follow On',       dot: '#db2777', bar: 'bg-pink-600'   },
-  abandoned:      { label: 'Abandoned',       dot: '#991b1b', bar: 'bg-red-800'    },
-  no_access:      { label: 'No Access',       dot: '#b91c1c', bar: 'bg-red-700'    },
-  cancelled:      { label: 'Cancelled',       dot: '#9ca3af', bar: 'bg-gray-400'   },
-}
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 function toDateStr(d) { return d.toISOString().split('T')[0] }

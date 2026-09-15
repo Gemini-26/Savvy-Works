@@ -1,54 +1,48 @@
 import { jsPDF } from 'jspdf'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
-import { loadBrandingImages, drawPdfHeader } from './pdfHeader'
-import { drawInvoiceTermsPage } from './invoiceTermsPage'
+import { loadBrandingImages, drawPdfHeader } from '../../finance/utils/pdfHeader'
 
 const MARGIN = 40
 const PAGE_W = 595.28 // A4 pt
 const CONTENT_W = PAGE_W - MARGIN * 2
 
-function formatDateTime(iso) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })
-}
-
-export async function buildInvoicePdf(invoice, lineItems, technicians) {
+export async function buildQuotePdf(quote, lineItems) {
   const doc = new jsPDF({ unit: 'pt', format: 'a4' })
   const branding = await loadBrandingImages()
 
   let y = drawPdfHeader(doc, branding, {
-    title: 'INVOICE',
-    ref: invoice.invoice_ref,
+    title: 'QUOTATION',
+    ref: quote.quote_ref,
     marginX: MARGIN,
     pageW: PAGE_W,
     marginTop: MARGIN,
   })
 
-  // ── Bill To / Dates ──────────────────────────────────────────────────────
+  // ── Customer / Quote Details ────────────────────────────────────────────
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(100, 100, 100)
-  doc.text('BILL TO', MARGIN, y)
-  doc.text('INVOICE DETAILS', MARGIN + CONTENT_W / 2, y)
+  doc.text('CUSTOMER', MARGIN, y)
+  doc.text('QUOTE DETAILS', MARGIN + CONTENT_W / 2, y)
   y += 14
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   doc.setTextColor(20, 20, 20)
-  const billLines = [
-    invoice.customers?.customer_name || '—',
-    invoice.site_address,
-    [invoice.site_city, invoice.site_county].filter(Boolean).join(', '),
-    invoice.site_postcode,
+  const customerLines = [
+    quote.customers?.customer_name || '—',
+    quote.site_address,
+    [quote.site_city, quote.site_county].filter(Boolean).join(', '),
+    quote.site_postcode,
   ].filter(Boolean)
-  billLines.forEach((line, i) => doc.text(line, MARGIN, y + i * 14))
+  customerLines.forEach((line, i) => doc.text(line, MARGIN, y + i * 14))
 
   const detailLines = [
-    ['Title', invoice.title || '—'],
-    ['Status', (invoice.status || '—').toUpperCase()],
-    ['Issue Date', formatDate(invoice.issue_date)],
-    ['Due Date', invoice.due_date ? formatDate(invoice.due_date) : '—'],
+    ['Title', quote.title || '—'],
+    ['Status', (quote.status || '—').toUpperCase()],
+    ['Issue Date', formatDate(quote.issue_date)],
+    ['Valid Until', quote.valid_until ? formatDate(quote.valid_until) : '—'],
   ]
   detailLines.forEach(([label, value], i) => {
     doc.setTextColor(100, 100, 100)
@@ -57,40 +51,9 @@ export async function buildInvoicePdf(invoice, lineItems, technicians) {
     doc.text(value, MARGIN + CONTENT_W / 2 + 80, y + i * 14)
   })
 
-  y += Math.max(billLines.length, detailLines.length) * 14 + 20
+  y += Math.max(customerLines.length, detailLines.length) * 14 + 20
 
-  // ── Technicians (who did the work) ──────────────────────────────────────
-  if (technicians && technicians.length > 0) {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9)
-    doc.setTextColor(100, 100, 100)
-    doc.text('TECHNICIANS', MARGIN, y)
-    y += 12
-
-    const techColX = [MARGIN, MARGIN + 130, MARGIN + 280, MARGIN + 400]
-    doc.setFontSize(8)
-    doc.text('Technician', techColX[0], y)
-    doc.text('Appointed Start', techColX[1], y)
-    doc.text('Started', techColX[2], y)
-    doc.text('Finished', techColX[3], y)
-    y += 4
-    doc.setDrawColor(230, 230, 230)
-    doc.line(MARGIN, y, PAGE_W - MARGIN, y)
-    y += 12
-
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(20, 20, 20)
-    technicians.forEach(t => {
-      doc.text(t.technician_name || '—', techColX[0], y)
-      doc.text(formatDateTime(t.scheduled_start), techColX[1], y)
-      doc.text(formatDateTime(t.actual_start), techColX[2], y)
-      doc.text(formatDateTime(t.actual_end), techColX[3], y)
-      y += 14
-    })
-    y += 12
-  }
-
-  // ── Line items table ─────────────────────────────────────────────────────
+  // ── Line items table ──────────────────────────────────────────────────────
   const colX = {
     desc: MARGIN,
     qty:  MARGIN + 260,
@@ -145,14 +108,14 @@ export async function buildInvoicePdf(invoice, lineItems, technicians) {
     y += 6
   }
 
-  // ── Totals ───────────────────────────────────────────────────────────────
+  // ── Totals ────────────────────────────────────────────────────────────────
   doc.setDrawColor(220, 220, 220)
   doc.line(MARGIN + CONTENT_W - 200, y, PAGE_W - MARGIN, y)
   y += 16
 
   const totalsRows = [
-    ['Subtotal', formatCurrency(invoice.subtotal)],
-    ['Tax',      formatCurrency(invoice.tax_total)],
+    ['Subtotal', formatCurrency(quote.subtotal)],
+    ['Tax',      formatCurrency(quote.tax_total)],
   ]
   totalsRows.forEach(([label, value]) => {
     doc.setFont('helvetica', 'normal')
@@ -166,11 +129,11 @@ export async function buildInvoicePdf(invoice, lineItems, technicians) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(11)
   doc.text('Total', PAGE_W - MARGIN - 200, y)
-  doc.text(formatCurrency(invoice.total), PAGE_W - MARGIN, y, { align: 'right' })
+  doc.text(formatCurrency(quote.total), PAGE_W - MARGIN, y, { align: 'right' })
   y += 30
 
   // ── Notes / Terms ────────────────────────────────────────────────────────
-  if (invoice.notes) {
+  if (quote.notes) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
     doc.setTextColor(100, 100, 100)
@@ -178,10 +141,10 @@ export async function buildInvoicePdf(invoice, lineItems, technicians) {
     y += 14
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(20, 20, 20)
-    doc.text(invoice.notes, MARGIN, y, { maxWidth: CONTENT_W })
+    doc.text(quote.notes, MARGIN, y, { maxWidth: CONTENT_W })
     y += 30
   }
-  if (invoice.terms) {
+  if (quote.terms) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
     doc.setTextColor(100, 100, 100)
@@ -189,31 +152,22 @@ export async function buildInvoicePdf(invoice, lineItems, technicians) {
     y += 14
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(20, 20, 20)
-    doc.text(invoice.terms, MARGIN, y, { maxWidth: CONTENT_W })
+    doc.text(quote.terms, MARGIN, y, { maxWidth: CONTENT_W })
   }
-
-  drawInvoiceTermsPage(doc)
 
   return doc
 }
 
-export async function downloadInvoicePdf(invoice, lineItems, technicians) {
-  const doc = await buildInvoicePdf(invoice, lineItems, technicians)
-  doc.save(`${invoice.invoice_ref || 'invoice'}.pdf`)
+export async function downloadQuotePdf(quote, lineItems) {
+  const doc = await buildQuotePdf(quote, lineItems)
+  doc.save(`${quote.quote_ref || 'quote'}.pdf`)
 }
 
-// Base64-encodes the PDF (no data: prefix) for handing off to the
-// send-invoice-receipt Edge Function as an email attachment.
-export async function invoicePdfBase64(invoice, lineItems, technicians) {
-  const doc = await buildInvoicePdf(invoice, lineItems, technicians)
-  return doc.output('datauristring').split(',')[1]
-}
-
-// Opens the PDF in a new tab for on-screen review before the user commits
-// to downloading it — same document, just `output('bloburl')` instead of `save()`.
-export async function previewInvoicePdf(invoice, lineItems, technicians) {
+// Opens the PDF in a new tab for on-screen review before committing to a download —
+// same document, just output('bloburl') instead of save().
+export async function previewQuotePdf(quote, lineItems) {
   // Open the tab synchronously (before the await) so popup blockers don't kill it.
   const tab = window.open('', '_blank')
-  const doc = await buildInvoicePdf(invoice, lineItems, technicians)
+  const doc = await buildQuotePdf(quote, lineItems)
   if (tab) tab.location.href = doc.output('bloburl')
 }
