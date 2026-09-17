@@ -32,9 +32,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The Capacitor 8 CLI refuses to run on anything below Node 22
+      # (@capacitor/cli engines: >=22). 24 matches the dev machine.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
 
       # Capacitor 8 compiles against Java 21.
