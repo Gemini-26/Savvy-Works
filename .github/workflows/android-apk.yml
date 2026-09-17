@@ -93,18 +93,32 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
+      # Run the CLI directly rather than through npx, so this can never
+      # silently resolve to some unrelated package named "cap" from the
+      # registry. Failures are echoed as an ::error:: annotation because run
+      # logs need authentication to read, while annotations do not.
       - name: Copy web assets and plugins into the Android project
-        run: npx cap sync android
+        run: |
+          set -o pipefail
+          ls -la node_modules/.bin/cap || echo "NOTE: node_modules/.bin/cap is missing"
+          ./node_modules/.bin/cap sync android 2>&1 | tee sync.log || {
+            echo "::error title=cap sync failed::$(tail -c 1500 sync.log | tr '\n' '~')"
+            exit 1
+          }
 
       # versionCode has to climb or Android treats the new APK as a downgrade
       # and refuses to install it over the old one.
       - name: Build APK
         working-directory: android
         run: |
+          set -o pipefail
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon \
             -PversionCode=${{ github.run_number }} \
-            -PversionName=1.0.${{ github.run_number }}
+            -PversionName=1.0.${{ github.run_number }} 2>&1 | tee gradle.log || {
+            echo "::error title=Gradle build failed::$(tail -c 1500 gradle.log | tr '\n' '~')"
+            exit 1
+          }
 
       - name: Name it something recognisable
         run: |
