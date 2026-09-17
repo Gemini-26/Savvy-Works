@@ -43,10 +43,26 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+      # The Ubuntu runner already ships an Android SDK, so this uses that
+      # directly rather than a third-party setup action — one less moving part
+      # to go stale, and it fails with a readable message if the image ever
+      # stops shipping one.
+      - name: Install Android SDK packages
+        run: |
+          set -eu
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "SDK root: $SDK"
+          SDKMANAGER=$(find "$SDK/cmdline-tools" -name sdkmanager -type f 2>/dev/null | head -n 1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::No sdkmanager under $SDK/cmdline-tools — the runner image has no Android SDK."
+            ls -la "$SDK" || true
+            exit 1
+          fi
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
       # Gradle makes a throwaway debug signing key on each fresh machine, and
       # Android refuses to update an installed app whose signature changed.
