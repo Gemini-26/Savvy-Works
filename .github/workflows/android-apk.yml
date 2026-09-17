@@ -75,6 +75,18 @@ jobs:
           path: ~/.android/debug.keystore
           key: android-debug-keystore-v1
 
+      # Maven Central rate-limits GitHub's shared runner addresses (HTTP 429).
+      # Keeping the resolved dependencies means later builds barely touch the
+      # network, which sidesteps it almost entirely.
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: gradle-
+
       - run: npm ci
 
       - name: Choose where the app loads from
@@ -115,12 +127,23 @@ jobs:
         run: |
           set -o pipefail
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon \
-            -PversionCode=${{ github.run_number }} \
-            -PversionName=1.0.${{ github.run_number }} 2>&1 | tee gradle.log || {
-            echo "::error title=Gradle build failed::$(tail -c 1500 gradle.log | tr '\n' '~')"
-            exit 1
-          }
+          for attempt in 1 2 3; do
+            if ./gradlew assembleDebug --no-daemon \
+                 -PversionCode=${{ github.run_number }} \
+                 -PversionName=1.0.${{ github.run_number }} 2>&1 | tee gradle.log; then
+              exit 0
+            fi
+            # Only a failed dependency download is worth retrying. A real
+            # compile error fails immediately rather than burning three rounds.
+            if ! grep -qE "Too Many Requests|Could not GET|Could not resolve" gradle.log; then
+              echo "::error title=Gradle build failed::$(tail -c 1500 gradle.log | tr '\n' '~')"
+              exit 1
+            fi
+            echo "Attempt $attempt could not download dependencies; backing off."
+            sleep 45
+          done
+          echo "::error title=Gradle failed after 3 attempts::$(tail -c 1500 gradle.log | tr '\n' '~')"
+          exit 1
 
       - name: Name it something recognisable
         run: |
