@@ -68,7 +68,7 @@ async function fetchPasswordEvents(profileId) {
 async function fetchShiftEvents(profileId) {
   const { data, error } = await supabase
     .from('work_shifts')
-    .select('*')
+    .select('*, clocked_out_by_profile:clocked_out_by (full_name)')
     .eq('technician_id', profileId)
     .order('clock_in', { ascending: false })
     .limit(100)
@@ -84,11 +84,12 @@ async function fetchShiftEvents(profileId) {
       at: row.clock_in,
     })
     if (row.clock_out) {
+      const forcedByOther = row.clocked_out_by && row.clocked_out_by !== profileId
       events.push({
         id: `clockout-${row.id}`,
         category: 'clock',
         label: 'Clocked out for the day',
-        detail: null,
+        detail: forcedByOther ? `Clocked out by ${row.clocked_out_by_profile?.full_name || 'admin'}` : null,
         at: row.clock_out,
       })
     }

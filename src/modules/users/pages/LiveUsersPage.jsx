@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Radio, MapPin, Briefcase, Clock, Satellite } from 'lucide-react'
+import { Radio, MapPin, Briefcase, Clock, Satellite, LogOut } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import DashboardCharts from '../../../shared/components/DashboardCharts.jsx'
 import LiveUsersMap from '../components/LiveUsersMap.jsx'
 import { fetchLiveUsers } from '../services/liveUsersService'
-import { onWorkShiftChange } from '../../../shared/services/workShiftService'
+import { onWorkShiftChange, clockOutForWork } from '../../../shared/services/workShiftService'
 import { formatHoursDuration } from '../../../shared/utils/shiftSummary'
 import { reverseGeocode } from '../../../shared/utils/geocode'
 
@@ -52,6 +52,8 @@ export default function LiveUsersPage() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [confirmingId, setConfirmingId] = useState(null)
+  const [clockingOutId, setClockingOutId] = useState(null)
 
   async function load() {
     try {
@@ -71,6 +73,20 @@ export default function LiveUsersPage() {
     const unsubscribe = onWorkShiftChange(load)
     return () => { clearInterval(interval); unsubscribe() }
   }, [])
+
+  async function handleClockOut(user) {
+    setClockingOutId(user.shiftId)
+    setError(null)
+    try {
+      await clockOutForWork(user.shiftId)
+      setUsers(prev => prev.filter(u => u.shiftId !== user.shiftId))
+    } catch (err) {
+      setError(err.message || 'Failed to clock out user')
+    } finally {
+      setClockingOutId(null)
+      setConfirmingId(null)
+    }
+  }
 
   const onJobCount = users.filter(u => u.onJob).length
   const idleCount = users.length - onJobCount
@@ -130,7 +146,7 @@ export default function LiveUsersPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {users.map(u => (
-            <div key={u.technicianId} className="bg-white rounded-xl border border-gray-200 p-5">
+            <div key={u.shiftId} className="bg-white rounded-xl border border-gray-200 p-5">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   <Avatar name={u.fullName} color={u.color} />
@@ -145,6 +161,34 @@ export default function LiveUsersPage() {
                   <Radio size={11} />
                   {u.onJob ? 'On a job' : 'Online'}
                 </span>
+              </div>
+
+              <div className="mt-3">
+                {confirmingId === u.shiftId ? (
+                  <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                    <span className="text-xs text-red-700">Clock out {u.fullName.split(' ')[0]} now?</span>
+                    <button
+                      onClick={() => handleClockOut(u)}
+                      disabled={clockingOutId === u.shiftId}
+                      className="ml-auto text-xs font-semibold text-red-700 hover:text-red-800 disabled:opacity-50"
+                    >
+                      {clockingOutId === u.shiftId ? 'Clocking out…' : 'Yes, clock out'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmingId(null)}
+                      className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmingId(u.shiftId)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700"
+                  >
+                    <LogOut size={12} /> Clock out
+                  </button>
+                )}
               </div>
 
               <div className="mt-4 space-y-2 text-sm">

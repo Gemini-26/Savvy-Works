@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { getCurrentProfile } from '../../services/authService'
 
 // Fired whenever a clock-in/out happens, so every mounted widget showing
 // shift state (the floating bubble, profile pages) can refetch and stay
@@ -39,9 +40,10 @@ export async function clockInForWork(technicianId) {
 }
 
 export async function clockOutForWork(shiftId) {
+  const profile = await getCurrentProfile().catch(() => null)
   const { error } = await supabase
     .from('work_shifts')
-    .update({ clock_out: new Date().toISOString() })
+    .update({ clock_out: new Date().toISOString(), clocked_out_by: profile?.id || null })
     .eq('id', shiftId)
   if (error) throw error
   notifyWorkShiftChanged()
@@ -62,7 +64,7 @@ export async function updateShiftLocation(shiftId, lat, lng) {
 export async function fetchShiftHistory(technicianId, limit = 30) {
   const { data, error } = await supabase
     .from('work_shifts')
-    .select('*')
+    .select('*, clocked_out_by_profile:clocked_out_by (full_name)')
     .eq('technician_id', technicianId)
     .not('clock_out', 'is', null)
     .order('clock_in', { ascending: false })
@@ -86,7 +88,7 @@ export async function fetchActiveShiftsForCompany() {
 export async function fetchShiftHistoryForCompany(limit = 100) {
   const { data, error } = await supabase
     .from('work_shifts')
-    .select('*, profiles:technician_id (id, full_name, role, color)')
+    .select('*, profiles:technician_id (id, full_name, role, color), clocked_out_by_profile:clocked_out_by (full_name)')
     .not('clock_out', 'is', null)
     .order('clock_in', { ascending: false })
     .limit(limit)

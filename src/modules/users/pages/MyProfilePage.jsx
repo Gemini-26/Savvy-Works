@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import { Mail, Phone, Building2, Pencil, Clock } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchActiveShift, clockInForWork, clockOutForWork, fetchShiftHistory, onWorkShiftChange } from '../../../shared/services/workShiftService'
-import { formatTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
+import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
+import BackgroundAccessCard from '../../../shared/components/BackgroundAccessCard'
 
 function formatDuration(ms) {
   const totalMinutes = Math.round(ms / 60000)
@@ -151,6 +152,9 @@ export default function MyProfilePage({ profile }) {
         )}
       </div>
 
+      {/* Native app only — renders nothing in a browser tab. */}
+      <BackgroundAccessCard className="max-w-lg" />
+
       <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-3">
         <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
           <Clock size={16} /> Hours Summary
@@ -183,7 +187,10 @@ export default function MyProfilePage({ profile }) {
                   </div>
                   {shifts.map(s => (
                     <p key={s.id} className="text-xs text-gray-400">
-                      {formatTime(s.clock_in)} – {formatTime(s.clock_out)}
+                      {formatDateTime(s.clock_in)} – {formatDateTime(s.clock_out)}
+                      {s.clocked_out_by && s.clocked_out_by !== profile.id && (
+                        <span className="text-amber-600"> (clocked out by {s.clocked_out_by_profile?.full_name || 'admin'})</span>
+                      )}
                     </p>
                   ))}
                 </div>

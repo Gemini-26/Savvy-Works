@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+    <!-- Permissions
+
+         Every permission the app can ever ask for has to be listed here first
+         — Android only shows a runtime prompt for permissions declared in the
+         manifest, and silently denies anything else. The runtime asking is
+         done by AppPermissionsPlugin.java, driven by the "Background access"
+         card in the app's Profile screen. -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- Location. FINE/COARSE are the normal "while using the app" grant;
+         BACKGROUND_LOCATION is the separate, second grant Android calls
+         "Allow all the time" and is what keeps GPS reporting once the phone
+         is locked or the technician switches to another app. Android 11+
+         will not hand it out in the same prompt as FINE — it has to be
+         requested on its own, after FINE is already granted. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- A foreground service is the only sanctioned way to keep using the GPS
+         once the app is no longer on screen. From Android 14 the service type
+         also needs its own permission. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Android 13+ won't show the ongoing "on shift" notification without
+         this, and a foreground service with no visible notification is one
+         the OS is free to kill. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Lets the app ask to be exempted from battery optimisation. Without
+         the exemption, Samsung/Xiaomi/Huawei power managers put the app to
+         sleep after a while and tracking stops mid-shift with no error.
+         NOTE: Google Play restricts this permission to a short list of app
+         types — if this app is ever published on Play rather than installed
+         directly, expect to justify it or drop this line and rely on the
+         battery-settings deep link instead (the plugin falls back to it). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+</manifest>

@@ -27,3 +27,21 @@ export async function fetchArchive(entityType) {
   if (error) throw error
   return data || []
 }
+
+// Un-archives the live record (clears archived_at/by) and drops the archive log entry.
+export async function restoreRecord(record) {
+  const table = record.entity_type === 'job' ? 'jobs' : null
+  if (!table) throw new Error(`Restore not supported for "${record.entity_type}".`)
+
+  const { error: restoreErr } = await supabase
+    .from(table)
+    .update({ archived_at: null, archived_by: null })
+    .eq('id', record.entity_id)
+  if (restoreErr) throw restoreErr
+
+  const { error: deleteErr } = await supabase
+    .from('archived_records')
+    .delete()
+    .eq('id', record.id)
+  if (deleteErr) throw deleteErr
+}

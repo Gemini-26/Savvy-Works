@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
-import { fetchArchive } from '../../../shared/services/archiveService'
+import { fetchArchive, restoreRecord } from '../../../shared/services/archiveService'
 import { formatDateTime } from '../../../shared/utils/formatDate'
 
 const ENTITY_LABELS = {
@@ -14,13 +14,35 @@ export default function ArchivesPage() {
   const [loading,  setLoading] = useState(true)
   const [error,    setError]   = useState(null)
   const [expanded, setExpanded] = useState(null)
+  const [restoringId, setRestoringId] = useState(null)
+  const [confirmingId, setConfirmingId] = useState(null)
 
   useEffect(() => {
+    load()
+  }, [])
+
+  function load() {
+    setLoading(true)
     fetchArchive()
       .then(setRecords)
       .catch(err => setError(err.message || 'Failed to load archive'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  async function handleRestore(record, e) {
+    e.stopPropagation()
+    setRestoringId(record.id)
+    setError(null)
+    try {
+      await restoreRecord(record)
+      setRecords(prev => prev.filter(r => r.id !== record.id))
+    } catch (err) {
+      setError(err.message || 'Failed to restore record')
+    } finally {
+      setRestoringId(null)
+      setConfirmingId(null)
+    }
+  }
 
   return (
     <PageContainer>
@@ -58,9 +80,36 @@ export default function ArchivesPage() {
                     {r.reason ? ` — ${r.reason}` : ''}
                   </p>
                 </div>
-                <span className="text-xs text-blue-600 font-medium shrink-0 ml-3">
-                  {expanded === r.id ? 'Hide' : 'View'} details
-                </span>
+                <div className="flex items-center gap-3 shrink-0 ml-3">
+                  {confirmingId === r.id ? (
+                    <span className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
+                      <span className="text-xs text-gray-500">Restore this job?</span>
+                      <button
+                        onClick={e => handleRestore(r, e)}
+                        disabled={restoringId === r.id}
+                        className="text-xs font-semibold text-green-700 hover:text-green-800 disabled:opacity-50"
+                      >
+                        {restoringId === r.id ? 'Restoring…' : 'Yes, restore'}
+                      </button>
+                      <button
+                        onClick={e => { e.stopPropagation(); setConfirmingId(null) }}
+                        className="text-xs font-medium text-gray-500 hover:text-gray-700"
+                      >
+                        Cancel
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      onClick={e => { e.stopPropagation(); setConfirmingId(r.id) }}
+                      className="text-xs font-medium text-green-700 hover:text-green-800"
+                    >
+                      Restore
+                    </button>
+                  )}
+                  <span className="text-xs text-blue-600 font-medium">
+                    {expanded === r.id ? 'Hide' : 'View'} details
+                  </span>
+                </div>
               </div>
 
               {expanded === r.id && (

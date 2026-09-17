@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Savvy Works</string>
+    <string name="title_activity_main">Savvy Works</string>
+    <string name="package_name">com.savvycivils.works</string>
+    <string name="custom_url_scheme">com.savvycivils.works</string>
+</resources>

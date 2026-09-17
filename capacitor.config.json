@@ -1,0 +1,12 @@
+{
+  "appId": "com.savvycivils.works",
+  "appName": "Savvy Works",
+  "webDir": "dist",
+  "android": {
+    "useLegacyBridge": true
+  },
+  "server": {
+    "url": "https://savvy-works.vercel.app",
+    "androidScheme": "https"
+  }
+}

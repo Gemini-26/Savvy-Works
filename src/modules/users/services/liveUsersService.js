@@ -45,6 +45,7 @@ export async function fetchLiveUsers() {
 
     return {
       technicianId,
+      shiftId: shift.id,
       fullName: shift.profiles?.full_name ?? 'Unknown',
       role: shift.profiles?.role ?? 'technician',
       color: shift.profiles?.color ?? null,

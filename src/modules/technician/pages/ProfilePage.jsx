@@ -6,7 +6,8 @@ import { fetchOnSiteHistory } from '../services/technicianService'
 import { requestPasswordChange, fetchPendingPasswordRequest } from '../../users/services/profileService'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
-import { formatTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
+import BackgroundAccessCard from '../../../shared/components/BackgroundAccessCard'
+import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 
 function formatDuration(ms) {
   const totalMinutes = Math.round(ms / 60000)
@@ -149,6 +150,9 @@ export default function ProfilePage({ profile }) {
         )}
       </div>
 
+      {/* Native app only — renders nothing in a browser tab. */}
+      <BackgroundAccessCard />
+
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
           <Clock size={16} /> Hours Summary
@@ -181,7 +185,10 @@ export default function ProfilePage({ profile }) {
                   </div>
                   {shifts.map(s => (
                     <p key={s.id} className="text-xs text-gray-400">
-                      {formatTime(s.clock_in)} – {formatTime(s.clock_out)}
+                      {formatDateTime(s.clock_in)} – {formatDateTime(s.clock_out)}
+                      {s.clocked_out_by && s.clocked_out_by !== profile.id && (
+                        <span className="text-amber-600"> (clocked out by {s.clocked_out_by_profile?.full_name || 'admin'})</span>
+                      )}
                     </p>
                   ))}
                 </div>

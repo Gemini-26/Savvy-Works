@@ -4,7 +4,7 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import { fetchActiveShiftsForCompany, fetchShiftHistoryForCompany, onWorkShiftChange } from '../../../shared/services/workShiftService'
-import { formatTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
+import { formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 
 function formatDuration(ms) {
   const totalMinutes = Math.round(ms / 60000)
@@ -86,7 +86,7 @@ export default function UserTimesheetsReportPage() {
                     </div>
                     <div className="text-right shrink-0 ml-3">
                       <p className="text-sm font-mono font-semibold text-emerald-700">{elapsedSince(s.clock_in)}</p>
-                      <p className="text-xs text-gray-400">since {formatTime(s.clock_in)}</p>
+                      <p className="text-xs text-gray-400">since {formatDateTime(s.clock_in)}</p>
                     </div>
                   </div>
                 ))}
@@ -110,8 +110,11 @@ export default function UserTimesheetsReportPage() {
                         <div key={s.id} className="flex items-center justify-between py-1.5">
                           <p className="text-sm text-gray-700">{s.profiles?.full_name || 'Unknown'}</p>
                           <div className="text-right">
-                            <p className="text-xs text-gray-500">{formatTime(s.clock_in)} – {formatTime(s.clock_out)}</p>
+                            <p className="text-xs text-gray-500">{formatDateTime(s.clock_in)} – {formatDateTime(s.clock_out)}</p>
                             <p className="text-xs text-gray-400">{formatDuration(new Date(s.clock_out) - new Date(s.clock_in))}</p>
+                            {s.clocked_out_by && s.clocked_out_by !== s.technician_id && (
+                              <p className="text-xs text-amber-600">Clocked out by {s.clocked_out_by_profile?.full_name || 'admin'}</p>
+                            )}
                           </div>
                         </div>
                       ))}

@@ -1,0 +1,110 @@
+name: Build Android APK
+
+# Builds an installable APK in the cloud, because the dev machine has no Java
+# or Android SDK. Run it from the Actions tab (Run workflow) and the finished
+# APK is attached to a GitHub Release you can open straight from a phone.
+on:
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: 'Site the app loads, e.g. https://savvy-works.vercel.app. Leave blank to keep whatever capacitor.config.json already says. Use "offline" to bundle the web app inside the APK instead.'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # Capacitor 8 compiles against Java 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      # Gradle makes a throwaway debug signing key on each fresh machine, and
+      # Android refuses to update an installed app whose signature changed.
+      # Caching the key keeps every build upgrade-installable over the last one.
+      - name: Reuse the debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
+      - run: npm ci
+
+      - name: Choose where the app loads from
+        if: inputs.app_url != ''
+        run: |
+          if [ "${{ inputs.app_url }}" = "offline" ]; then
+            node scripts/set-app-url.mjs --offline
+          else
+            node scripts/set-app-url.mjs "${{ inputs.app_url }}"
+          fi
+
+      # Needed in full only for an offline APK, where these end up baked into
+      # the bundle. When the shell loads the live site, Vercel's own build
+      # supplies them and these can be absent.
+      - name: Build web assets
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Copy web assets and plugins into the Android project
+        run: npx cap sync android
+
+      # versionCode has to climb or Android treats the new APK as a downgrade
+      # and refuses to install it over the old one.
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon \
+            -PversionCode=${{ github.run_number }} \
+            -PversionName=1.0.${{ github.run_number }}
+
+      - name: Name it something recognisable
+        run: |
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             out/savvy-works-1.0.${{ github.run_number }}.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: savvy-works-apk
+          path: out/*.apk
+
+      # A Release gives a plain download link that works in a phone browser,
+      # which an Actions artifact (a zip, behind a login) does not.
+      - name: Publish the APK as a release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.md <<'NOTES'
+          Open this page on the Android phone, tap the `.apk` below, and allow
+          installing from this source when prompted.
+
+          After installing, open **Profile → Background Access** and grant
+          everything listed there — GPS will not survive the screen locking
+          until you do.
+          NOTES
+          gh release create "apk-v1.0.${{ github.run_number }}" \
+            out/savvy-works-1.0.${{ github.run_number }}.apk \
+            --title "Savvy Works APK 1.0.${{ github.run_number }}" \
+            --notes-file release-notes.md

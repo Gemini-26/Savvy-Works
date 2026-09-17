@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Clock, X, MapPin, MapPinOff } from 'lucide-react'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { useLocationTracking } from '../../hooks/useLocationTracking'
@@ -100,11 +101,27 @@ export default function ClockBubble() {
               </div>
               {location.enabled && (
                 <p className={`text-[11px] mb-3 ${location.status === 'denied' ? 'text-red-600' : location.status === 'granted' ? 'text-emerald-600' : 'text-gray-400'}`}>
-                  {location.status === 'requesting' && 'Waiting for browser permission…'}
+                  {location.status === 'requesting' && (location.isNative ? 'Waiting for permission…' : 'Waiting for browser permission…')}
                   {location.status === 'granted' && 'Sharing your live location.'}
-                  {location.status === 'denied' && "Blocked — allow location in your browser's site settings, then toggle off/on."}
+                  {location.status === 'reconnecting' && 'Reconnecting GPS…'}
+                  {location.status === 'denied' && (location.isNative
+                    ? 'Blocked — allow Location for Savvy Works in your phone’s app settings, then toggle off/on.'
+                    : "Blocked — allow location in your browser's site settings, then toggle off/on.")}
                   {location.status === 'unsupported' && 'Location isn’t available on this device/browser.'}
                 </p>
+              )}
+              {/* Tracking is running but only survives while the app is on
+                  screen — the "all the time" grant lives behind a disclosure
+                  screen on the Profile page, so point there rather than
+                  prompting from inside a toggle. */}
+              {location.enabled && location.isNative && location.status === 'granted' && !location.backgroundReady && (
+                <Link
+                  to="/profile"
+                  onClick={() => setOpen(false)}
+                  className="block text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 mb-3"
+                >
+                  Stops when your screen locks — finish setup under Profile → Background Access.
+                </Link>
               )}
               {!location.enabled && <div className="mb-3" />}
 
