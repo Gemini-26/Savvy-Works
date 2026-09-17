@@ -4,6 +4,17 @@ name: Build Android APK
 # or Android SDK. Run it from the Actions tab (Run workflow) and the finished
 # APK is attached to a GitHub Release you can open straight from a phone.
 on:
+  # Anything that changes the native shell needs a fresh APK, so build one
+  # automatically. Changes under src/ do not — those reach the phone through
+  # Vercel, since the APK loads the live site.
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - 'capacitor.config.json'
+      - 'scripts/set-app-url.mjs'
+      - '.github/workflows/android-apk.yml'
+
   workflow_dispatch:
     inputs:
       app_url:
