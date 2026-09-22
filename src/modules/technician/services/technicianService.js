@@ -129,24 +129,5 @@ export const clockIn = clockInAssignment
 export const clockOut = clockOutAssignment
 
 // On-site clock history for a technician — one row per appointment they
-// clocked into, carrying the job number/title for record-keeping.
-export async function fetchOnSiteHistory(technicianId) {
-  const { data, error } = await supabase
-    .from('appointment_assignments')
-    .select(`
-      id, actual_start, actual_end,
-      appointments(job_id, jobs(job_ref, title))
-    `)
-    .eq('technician_id', technicianId)
-    .not('actual_start', 'is', null)
-    .order('actual_start', { ascending: false })
-  if (error) throw error
-
-  return (data || []).map(row => ({
-    id: row.id,
-    actual_start: row.actual_start,
-    actual_end: row.actual_end,
-    job_ref: row.appointments?.jobs?.job_ref,
-    job_title: row.appointments?.jobs?.title,
-  }))
-}
+// clocked into, carrying the job number/title and who was on site with them.
+export { fetchOnSiteSessions as fetchOnSiteHistory } from '../../../shared/services/onSiteService'

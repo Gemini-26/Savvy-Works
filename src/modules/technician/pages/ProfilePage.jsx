@@ -160,7 +160,7 @@ export default function ProfilePage({ profile }) {
         {loading ? (
           <p className="text-sm text-gray-400">Loading…</p>
         ) : (
-          <ClockHoursSummary shifts={history} />
+          <ClockHoursSummary shifts={history} onSiteSessions={onSiteHistory} />
         )}
       </div>
 

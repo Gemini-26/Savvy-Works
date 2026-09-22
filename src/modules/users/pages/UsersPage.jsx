@@ -106,8 +106,10 @@ export default function UsersPage({ activeOnly = true }) {
         <p className="text-sm text-gray-400 mt-4">Loading users…</p>
       ) : profiles.length === 0 ? (
         <EmptyState
-          title="No users found"
-          description="Add your first technician or staff member to get started."
+          title={activeOnly ? 'No users found' : 'No inactive users'}
+          description={activeOnly
+            ? 'Add your first technician or staff member to get started.'
+            : 'Everyone on the team is currently active.'}
         />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mt-4">

@@ -11,6 +11,7 @@ import JobDetailPage from '../modules/jobs/pages/JobDetailPage'
 import UsersPage from '../modules/users/pages/UsersPage'
 import LiveUsersPage from '../modules/users/pages/LiveUsersPage'
 import ActiveTeamMembersPage from '../modules/users/pages/ActiveTeamMembersPage'
+import TeamMemberLogPage from '../modules/users/pages/TeamMemberLogPage'
 import NewUserPage from '../modules/users/pages/NewUserPage'
 import UserDetailPage from '../modules/users/pages/UserDetailPage'
 import UserLogsPage from '../modules/users/pages/UserLogsPage'
@@ -162,6 +163,7 @@ export const moduleRoutes = [
   { path: 'users/:id',           element: <UserDetailPage />,                      title: 'User' },
   { path: 'users/team/active',   element: <ActiveTeamMembersPage activeOnly={true} />,  title: 'Active Team Members' },
   { path: 'users/team/inactive', element: <ActiveTeamMembersPage activeOnly={false} />,  title: 'Inactive Team Members' },
+  { path: 'users/team/:id',      element: <TeamMemberLogPage />,                        title: 'Team Member Log' },
   { path: 'users/timeoff/awaiting',    title: 'Time Off Awaiting Approval' },
   { path: 'users/timeoff/approved',    title: 'Time Off Approved' },
   { path: 'users/timeoff/declined',    title: 'Time Off Declined' },

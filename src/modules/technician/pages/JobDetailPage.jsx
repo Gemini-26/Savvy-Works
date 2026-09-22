@@ -9,6 +9,7 @@ import CompleteJobModal from '../../jobs/components/CompleteJobModal'
 import SelectTeamModal from '../components/SelectTeamModal'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import { formatDateLong, formatTime } from '../../../shared/utils/formatDate'
+import { formatHoursDuration } from '../../../shared/utils/shiftSummary'
 
 export default function JobDetailPage({ profile }) {
   const { id } = useParams()
@@ -148,6 +149,14 @@ export default function JobDetailPage({ profile }) {
   const afterPhotos = photos.filter(p => p.stage === 'after')
   const hasBeforeAfter = beforePhotos.length > 0 && afterPhotos.length > 0
   const visiblePhotos = photoTab === 'before' ? beforePhotos : afterPhotos
+  // Team members clock in and out with the technician, so everyone on this
+  // assignment shares one on-site window.
+  const onSiteMs = appt.actual_start && appt.actual_end
+    ? new Date(appt.actual_end) - new Date(appt.actual_start)
+    : null
+  const onSiteLabel = appt.actual_start
+    ? `${formatTime(appt.actual_start)} – ${appt.actual_end ? formatTime(appt.actual_end) : 'now'}${onSiteMs !== null ? ` · ${formatHoursDuration(onSiteMs)}` : ''}`
+    : null
 
   return (
     <div className="pb-6">
@@ -180,10 +189,24 @@ export default function JobDetailPage({ profile }) {
             {formatDateLong(appt.scheduled_start)}, {formatTime(appt.scheduled_start)}–{formatTime(appt.scheduled_end)}
           </div>
           {appt.notes && <p className="text-sm text-gray-500 pt-1 border-t border-gray-100">{appt.notes}</p>}
-          {teamMembers.length > 0 && (
-            <div className="flex items-start gap-2 text-sm text-gray-600 pt-1 border-t border-gray-100">
-              <span className="text-gray-400 text-xs mt-0.5">With:</span>
-              <span className="text-gray-800">{teamMembers.map(m => m.full_name).join(', ')}</span>
+          {(appt.actual_start || teamMembers.length > 0) && (
+            <div className="pt-2 border-t border-gray-100 space-y-1.5">
+              <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">On site</p>
+              {appt.actual_start && (
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-800 truncate">{profile.full_name} <span className="text-xs text-gray-400">· you</span></span>
+                  <span className="text-xs text-gray-500 shrink-0">{onSiteLabel}</span>
+                </div>
+              )}
+              {teamMembers.map(m => (
+                <div key={m.id} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-800 truncate">
+                    {m.full_name}
+                    {m.role_title && <span className="text-xs text-gray-400"> · {m.role_title}</span>}
+                  </span>
+                  <span className="text-xs text-gray-500 shrink-0">{appt.actual_start ? onSiteLabel : 'Not clocked in'}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>

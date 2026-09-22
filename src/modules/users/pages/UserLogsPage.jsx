@@ -35,7 +35,8 @@ export default function UserLogsPage() {
   const [error,    setError]    = useState(null)
 
   useEffect(() => {
-    fetchProfiles(false)
+    // null, not false — the logs list covers every user, active or not.
+    fetchProfiles(null)
       .then(result => setProfiles(result.data))
       .catch(err => setError(err.message || 'Failed to load users'))
       .finally(() => setLoading(false))

@@ -10,10 +10,18 @@ import { createInvoiceFromJob, findInvoiceForJob } from '../../finance/services/
 import { fetchJobActivity } from '../../../shared/services/activityService'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 import { formatDateTime } from '../../../shared/utils/formatDate'
+import { formatHoursDuration } from '../../../shared/utils/shiftSummary'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { useItems } from '../../quotes/hooks/useItems'
 import LineItemsEditor from '../../quotes/components/LineItemsEditor'
 import { JOB_TYPES } from '../../../shared/constants/jobTypes'
+
+// On-site duration for one clock-in window - "in progress" until clocked out.
+function onSiteDuration(start, end) {
+  if (!start) return null
+  if (!end) return 'In progress'
+  return formatHoursDuration(new Date(end) - new Date(start))
+}
 
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 const STATUSES   = ['New', 'Assigned', 'Scheduled', 'In Progress', 'On Hold', 'Pending Confirmation', 'Completed', 'Invoiced', 'Cancelled']
@@ -568,40 +576,78 @@ export default function JobDetailPage() {
                       <p className="text-xs text-gray-400 italic px-3 py-2">No technicians assigned to this appointment.</p>
                     ) : (
                       <div className="divide-y divide-gray-50">
-                        {assignments.map(a => (
-                          <div key={a.id} className="flex items-center justify-between px-3 py-2">
-                            <div className="flex items-center gap-2">
-                              <div
-                                className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                                style={{ backgroundColor: a.profiles?.color || '#3B82F6' }}
-                              >
-                                {a.profiles?.full_name?.[0]?.toUpperCase() || '?'}
-                              </div>
-                              <div>
-                                <div className="text-sm text-gray-800">{a.profiles?.full_name || 'Unknown'}</div>
-                                <div className="text-xs text-gray-400">
-                                  {a.actual_start
-                                    ? `Started ${new Date(a.actual_start).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}`
-                                    : 'Not started'}
-                                  {a.actual_end && ` · Finished ${new Date(a.actual_end).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                        {assignments.map(a => {
+                          // Helpers the technician picked when clocking in. They share the
+                          // technician's on-site window, so their hours for this appointment
+                          // are the same actual_start -> actual_end.
+                          const crew = (a.assignment_team_members || []).map(t => t.team_members).filter(Boolean)
+                          const duration = onSiteDuration(a.actual_start, a.actual_end)
+                          return (
+                            <div key={a.id} className="px-3 py-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+                                    style={{ backgroundColor: a.profiles?.color || '#3B82F6' }}
+                                  >
+                                    {a.profiles?.full_name?.[0]?.toUpperCase() || '?'}
+                                  </div>
+                                  <div>
+                                    <div className="text-sm text-gray-800">
+                                      {a.profiles?.full_name || 'Unknown'}
+                                      <span className="text-xs text-gray-400 font-normal"> · Technician</span>
+                                    </div>
+                                    <div className="text-xs text-gray-400">
+                                      {a.actual_start
+                                        ? `Started ${new Date(a.actual_start).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}`
+                                        : 'Not started'}
+                                      {a.actual_end && ` · Finished ${new Date(a.actual_end).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}`}
+                                      {duration && (duration === 'In progress' ? ' · On site now' : ` · ${duration} on site`)}
+                                    </div>
+                                  </div>
                                 </div>
+                                {!a.actual_start ? (
+                                  <button type="button" onClick={() => handleClockIn(a.id)}
+                                    className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-blue-700 transition-colors">
+                                    Clock In
+                                  </button>
+                                ) : !a.actual_end ? (
+                                  <button type="button" onClick={() => handleClockOut(a.id)}
+                                    className="bg-green-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-green-700 transition-colors">
+                                    Clock Out
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-green-600 font-medium">Done</span>
+                                )}
                               </div>
+
+                              {crew.length > 0 && (
+                                <div className="mt-2 ml-8 border-l-2 border-gray-100 pl-3 space-y-1">
+                                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
+                                    On site with ({crew.length})
+                                  </p>
+                                  {crew.map(m => (
+                                    <div key={m.id} className="flex items-center justify-between gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => navigate(`/users/team/${m.id}`)}
+                                        className="text-xs text-blue-600 hover:text-blue-700 font-medium truncate text-left"
+                                      >
+                                        {m.full_name}
+                                        {m.role_title && <span className="text-gray-400 font-normal"> · {m.role_title}</span>}
+                                      </button>
+                                      <span className="text-xs text-gray-400 shrink-0">
+                                        {a.actual_start
+                                          ? `${new Date(a.actual_start).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })} – ${a.actual_end ? new Date(a.actual_end).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' }) : '…'}${duration && duration !== 'In progress' ? ` · ${duration}` : ''}`
+                                          : 'Not started'}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            {!a.actual_start ? (
-                              <button type="button" onClick={() => handleClockIn(a.id)}
-                                className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-blue-700 transition-colors">
-                                Clock In
-                              </button>
-                            ) : !a.actual_end ? (
-                              <button type="button" onClick={() => handleClockOut(a.id)}
-                                className="bg-green-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-green-700 transition-colors">
-                                Clock Out
-                              </button>
-                            ) : (
-                              <span className="text-xs text-green-600 font-medium">Done</span>
-                            )}
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     )}
                   </div>

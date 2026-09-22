@@ -99,6 +99,9 @@ export async function denyPasswordRequest(requestId, profileId) {
   }).catch(() => {})
 }
 
+// `activeOnly` is a three-way filter: true = active only, false = inactive
+// only, null = every user. Passing false used to mean "don't filter", which
+// made the Inactive Users page list active users too.
 export async function fetchProfiles(activeOnly = true, page = 0, search = '') {
   let q = supabase
     .from('profiles')
@@ -110,7 +113,7 @@ export async function fetchProfiles(activeOnly = true, page = 0, search = '') {
     q = q.or(`full_name.ilike.%${search}%,email.ilike.%${search}%`)
   }
 
-  if (activeOnly) q = q.eq('is_active', true)
+  if (activeOnly !== null) q = q.eq('is_active', activeOnly)
 
   const { data, error, count } = await q
   if (error) throw error

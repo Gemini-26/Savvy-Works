@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { Users, Phone } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
@@ -9,6 +10,7 @@ import { useCurrentUser } from '../../../hooks/useCurrentUser'
 const inputCls = 'w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 
 export default function ActiveTeamMembersPage({ activeOnly = true }) {
+  const navigate = useNavigate()
   const { isAdmin } = useCurrentUser()
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -102,7 +104,7 @@ export default function ActiveTeamMembersPage({ activeOnly = true }) {
       <div className="flex items-center justify-between">
         <PageHeader
           title={title}
-          subtitle="Labourers and helpers technicians can bring along when they clock in on a job"
+          subtitle="Labourers and helpers technicians can bring along when they clock in on a job — open one to see their on-site hours"
         />
         {isAdmin && activeOnly && (
           <button
@@ -197,12 +199,16 @@ export default function ActiveTeamMembersPage({ activeOnly = true }) {
                 return (
                   <tr key={m.id} className="hover:bg-blue-50/50 transition-colors">
                     <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/users/team/${m.id}`)}
+                        className="flex items-center gap-3 text-left group"
+                      >
                         <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center flex-shrink-0">
                           <Users size={14} />
                         </div>
-                        <span className="font-medium text-gray-900">{m.full_name}</span>
-                      </div>
+                        <span className="font-medium text-gray-900 group-hover:text-blue-600">{m.full_name}</span>
+                      </button>
                     </td>
                     <td className="px-5 py-3 text-gray-600">{m.role_title || '—'}</td>
                     <td className="px-5 py-3 text-gray-600">
@@ -217,6 +223,12 @@ export default function ActiveTeamMembersPage({ activeOnly = true }) {
                     </td>
                     {isAdmin && (
                       <td className="px-5 py-3 text-right whitespace-nowrap">
+                        <button
+                          onClick={() => navigate(`/users/team/${m.id}`)}
+                          className="text-xs font-medium text-blue-600 hover:text-blue-800 mr-3"
+                        >
+                          On-Site Log
+                        </button>
                         <button
                           onClick={() => startEdit(m)}
                           className="text-xs font-medium text-gray-600 hover:text-gray-900 mr-3"

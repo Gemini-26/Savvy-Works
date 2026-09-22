@@ -5,6 +5,7 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchProfile } from '../services/profileService'
 import { fetchUserActivityLog } from '../services/activityLogService'
 import { fetchShiftHistory } from '../../../shared/services/workShiftService'
+import { fetchOnSiteSessions } from '../../../shared/services/onSiteService'
 import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 
 const CATEGORY_STYLE = {
@@ -38,16 +39,18 @@ export default function UserActivityLogPage() {
   const [profile,  setProfile]  = useState(null)
   const [events,   setEvents]   = useState([])
   const [shifts,   setShifts]   = useState([])
+  const [onSite,   setOnSite]   = useState([])
   const [loading,  setLoading]  = useState(true)
   const [error,    setError]    = useState(null)
   const [filter,   setFilter]   = useState('all')
 
   useEffect(() => {
-    Promise.all([fetchProfile(id), fetchUserActivityLog(id), fetchShiftHistory(id, 200)])
-      .then(([profileData, eventData, shiftData]) => {
+    Promise.all([fetchProfile(id), fetchUserActivityLog(id), fetchShiftHistory(id, 200), fetchOnSiteSessions(id)])
+      .then(([profileData, eventData, shiftData, onSiteData]) => {
         setProfile(profileData)
         setEvents(eventData)
         setShifts(shiftData)
+        setOnSite(onSiteData)
       })
       .catch(err => setError(err.message || 'Failed to load activity log'))
       .finally(() => setLoading(false))
@@ -91,7 +94,7 @@ export default function UserActivityLogPage() {
         <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
           <Clock size={16} /> Hours Summary
         </div>
-        <ClockHoursSummary shifts={shifts} />
+        <ClockHoursSummary shifts={shifts} onSiteSessions={onSite} />
       </div>
 
       <div className="flex gap-2 flex-wrap mb-4">
