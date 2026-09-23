@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { Eye, ArrowRightCircle } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import PaginationBar from '../../../shared/components/PaginationBar'
 import SearchBar from '../../../shared/components/SearchBar'
-import { fetchQuotes } from '../services/quoteService'
+import QuotePreviewModal from '../components/QuotePreviewModal'
+import { fetchQuotes, convertQuoteToJob } from '../services/quoteService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
 
@@ -46,6 +48,8 @@ export default function QuotesPage({ statusFilter }) {
   const [error,       setError]       = useState(null)
   const [search,      setSearch]      = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [previewId,    setPreviewId]    = useState(null)
+  const [convertingId, setConvertingId] = useState(null)
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300)
@@ -78,6 +82,19 @@ export default function QuotesPage({ statusFilter }) {
 
   const title    = TITLES[statusFilter] ?? 'All Quotes'
   const subtitle = statusFilter ? `Quotes with status "${statusFilter}"` : 'All customer quotes'
+
+  async function handleConvert(e, quote) {
+    e.stopPropagation()
+    setConvertingId(quote.id)
+    setError(null)
+    try {
+      const job = await convertQuoteToJob(quote)
+      navigate(`/jobs/${job.id}`)
+    } catch (err) {
+      setError(err.message || 'Failed to convert quote to job')
+      setConvertingId(null)
+    }
+  }
 
   return (
     <PageContainer>
@@ -121,25 +138,52 @@ export default function QuotesPage({ statusFilter }) {
                 <th className="text-left px-5 py-3">Valid Until</th>
                 <th className="text-right px-5 py-3">Total</th>
                 <th className="text-left px-5 py-3">Status</th>
+                <th className="text-right px-5 py-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {quotes.map((q) => (
-                <tr
-                  key={q.id}
-                  onClick={() => navigate(`/quotes/${q.id}`)}
-                  className="hover:bg-blue-50 transition-colors cursor-pointer"
-                >
-                  <td className="px-5 py-3 font-mono text-xs text-gray-500">{q.quote_ref ?? '—'}</td>
-                  <td className="px-5 py-3 font-medium text-gray-900">{q.title ?? '—'}</td>
-                  <td className="px-5 py-3 text-gray-600">{q.customers?.customer_name ?? '—'}</td>
-                  <td className="px-5 py-3 text-gray-600">{q.profiles?.full_name ?? '—'}</td>
-                  <td className="px-5 py-3 text-gray-600">{formatDate(q.issue_date)}</td>
-                  <td className="px-5 py-3 text-gray-600">{formatDate(q.valid_until)}</td>
-                  <td className="px-5 py-3 text-right font-medium text-gray-900">{formatCurrency(q.total)}</td>
-                  <td className="px-5 py-3"><StatusBadge status={q.status} /></td>
-                </tr>
-              ))}
+              {quotes.map((q) => {
+                const canConvert = q.status === 'accepted' && !q.job_id
+                return (
+                  <tr
+                    key={q.id}
+                    onClick={() => navigate(`/quotes/${q.id}`)}
+                    className="hover:bg-blue-50 transition-colors cursor-pointer"
+                  >
+                    <td className="px-5 py-3 font-mono text-xs text-gray-500">{q.quote_ref ?? '—'}</td>
+                    <td className="px-5 py-3 font-medium text-gray-900">{q.title ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-600">{q.customers?.customer_name ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-600">{q.profiles?.full_name ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-600">{formatDate(q.issue_date)}</td>
+                    <td className="px-5 py-3 text-gray-600">{formatDate(q.valid_until)}</td>
+                    <td className="px-5 py-3 text-right font-medium text-gray-900">{formatCurrency(q.total)}</td>
+                    <td className="px-5 py-3"><StatusBadge status={q.status} /></td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          title="Preview quote"
+                          onClick={e => { e.stopPropagation(); setPreviewId(q.id) }}
+                          className="flex items-center gap-1 px-2 py-1 rounded border border-gray-300 text-xs font-medium text-gray-600 hover:border-blue-300 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                        >
+                          <Eye size={14} /> Preview
+                        </button>
+                        {canConvert && (
+                          <button
+                            type="button"
+                            title="Convert to job"
+                            onClick={e => handleConvert(e, q)}
+                            disabled={convertingId === q.id}
+                            className="flex items-center gap-1 px-2 py-1 rounded border border-teal-300 text-xs font-medium text-teal-700 bg-teal-50 hover:bg-teal-100 transition-colors disabled:opacity-50"
+                          >
+                            <ArrowRightCircle size={14} /> {convertingId === q.id ? 'Converting…' : 'Convert'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
 
@@ -150,6 +194,14 @@ export default function QuotesPage({ statusFilter }) {
             loading={loadingMore}
           />
         </div>
+      )}
+
+      {previewId && (
+        <QuotePreviewModal
+          quoteId={previewId}
+          onClose={() => setPreviewId(null)}
+          onConverted={() => load(0, true)}
+        />
       )}
     </PageContainer>
   )
