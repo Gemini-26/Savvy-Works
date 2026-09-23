@@ -1,12 +1,13 @@
 import { useState, useEffect, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { Eye } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchQuote, updateQuote, deleteQuote, convertQuoteToJob } from '../services/quoteService'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { useItems } from '../hooks/useItems'
 import LineItemsEditor from '../components/LineItemsEditor'
-import { downloadQuotePdf } from '../utils/quotePdf'
+import { downloadQuotePdf, previewQuotePdf } from '../utils/quotePdf'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
 
@@ -49,6 +50,7 @@ export default function QuoteDetailPage() {
   const [saving,        setSaving]        = useState(false)
   const [deleting,      setDeleting]      = useState(false)
   const [converting,    setConverting]    = useState(false)
+  const [previewingPdf, setPreviewingPdf] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error,         setError]         = useState(null)
   const [form,          setForm]          = useState(null)
@@ -128,6 +130,17 @@ export default function QuoteDetailPage() {
     }
   }
 
+  async function handlePreviewPdf() {
+    setPreviewingPdf(true)
+    try {
+      await previewQuotePdf(form, lineItems)
+    } catch (err) {
+      setError(err.message || 'Failed to generate PDF preview')
+    } finally {
+      setPreviewingPdf(false)
+    }
+  }
+
   if (loading) return <PageContainer><p className="text-sm text-gray-400 mt-8">Loading quote…</p></PageContainer>
   if (!form)   return <PageContainer><p className="text-sm text-red-500 mt-8">{error || 'Quote not found.'}</p></PageContainer>
 
@@ -166,6 +179,11 @@ export default function QuoteDetailPage() {
                 className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-700 transition-colors">
                 ✏️ Edit
               </button>
+              <button type="button" onClick={handlePreviewPdf} disabled={previewingPdf}
+                title="View Quote"
+                className="flex items-center justify-center bg-gray-100 text-gray-700 px-3 py-2 rounded text-sm font-semibold hover:bg-gray-200 disabled:opacity-50 transition-colors">
+                <Eye size={16} />
+              </button>
               <button type="button" onClick={() => downloadQuotePdf(form, lineItems)}
                 className="bg-gray-700 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-gray-800 transition-colors">
                 ⬇ Download PDF
@@ -190,6 +208,11 @@ export default function QuoteDetailPage() {
         {form.job_id && (
           <button onClick={() => navigate(`/jobs/${form.job_id}`)} className="ml-3 text-xs text-teal-600 hover:underline">
             View converted job →
+          </button>
+        )}
+        {form.lead_id && (
+          <button onClick={() => navigate(`/leads/${form.lead_id}`)} className="ml-3 text-xs text-teal-600 hover:underline">
+            ↩ Converted from Lead {form.leads?.lead_ref || ''} →
           </button>
         )}
       </div>

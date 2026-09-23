@@ -54,7 +54,7 @@ export async function fetchJobForPayment(id) {
 export async function fetchJob(id) {
   const { data, error } = await supabase
     .from('jobs')
-    .select('*, customers(customer_name)')
+    .select('*, customers(customer_name), quotes!quote_id(quote_ref)')
     .eq('id', id)
     .is('archived_at', null)
     .maybeSingle()

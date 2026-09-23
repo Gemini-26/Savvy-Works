@@ -24,7 +24,7 @@ export async function fetchQuotes(statusFilter, page = 0, search = '') {
 export async function fetchQuote(id) {
   const { data, error } = await supabase
     .from('quotes')
-    .select('*, customers(customer_name, email, telephone, mobile), profiles(full_name), quote_items(*)')
+    .select('*, customers(customer_name, email, telephone, mobile), profiles(full_name), quote_items(*), leads!lead_id(lead_ref)')
     .eq('id', id)
     .maybeSingle()
 

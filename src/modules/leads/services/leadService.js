@@ -1,4 +1,5 @@
 import { supabase } from '../../../lib/supabase'
+import { nextQuoteNumber } from '../../../shared/utils/generateDocumentNumber'
 
 const PAGE_SIZE = 50
 
@@ -54,4 +55,47 @@ export async function deleteLead(id) {
     .eq('id', id)
 
   if (error) throw error
+}
+
+// Converts a Lead into a new Quote, carrying over customer/site/title, and
+// marks the lead as converted — mirrors convertQuoteToJob's quote → job flow.
+export async function convertLeadToQuote(lead) {
+  const quote_ref = await nextQuoteNumber()
+
+  const { data, error } = await supabase
+    .from('quotes')
+    .insert([{
+      quote_ref,
+      quote_number: quote_ref,
+      lead_id: lead.id,
+      customer_id: lead.customer_id || null,
+      title: lead.title || lead.company_name || lead.full_name || null,
+      status: 'draft',
+      site_address: lead.address,
+      site_city: lead.city,
+      site_county: lead.county,
+      site_postcode: lead.postcode,
+    }])
+    .select()
+
+  if (error) throw error
+  const newQuote = data[0]
+
+  await updateLead(lead.id, { status: 'converted' })
+
+  return newQuote
+}
+
+// Looks up the quote a lead was converted into, if any — used to show a
+// "View Quote" link on an already-converted lead (leads has no reverse
+// quote_id column, unlike jobs.quote_id, so this is a lookup by lead_id).
+export async function fetchQuoteForLead(leadId) {
+  const { data, error } = await supabase
+    .from('quotes')
+    .select('id, quote_ref')
+    .eq('lead_id', leadId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
 }

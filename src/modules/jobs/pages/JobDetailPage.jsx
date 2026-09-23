@@ -330,6 +330,7 @@ export default function JobDetailPage() {
     return {
       job_ref:            d.job_ref            ?? '',
       quote_id:           d.quote_id           ?? null,
+      quote_ref:          d.quotes?.quote_ref  ?? null,
       assigned_to:        d.assigned_to        ?? '',
       status:             toDisplayStatus(d.status),
       job_type:           d.job_type           ?? 'New Job',
@@ -425,9 +426,17 @@ export default function JobDetailPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-gray-900">
-          {form.title || form.job_ref || 'Job'}
-        </h1>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">
+            {form.title || form.job_ref || 'Job'}
+          </h1>
+          {form.quote_id && (
+            <button type="button" onClick={() => navigate(`/quotes/${form.quote_id}`)}
+              className="text-xs text-teal-600 hover:underline mt-0.5">
+              ↩ Converted from Quote {form.quote_ref || ''} →
+            </button>
+          )}
+        </div>
         <div className="flex gap-2">
           {editing ? (
             <Fragment key="editing-actions">

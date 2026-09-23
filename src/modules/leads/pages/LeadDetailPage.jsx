@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
-import { fetchLead, updateLead, deleteLead } from '../services/leadService'
+import { fetchLead, updateLead, deleteLead, convertLeadToQuote, fetchQuoteForLead } from '../services/leadService'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 
 const SOURCES  = ['None', 'Phone', 'Email', 'Website', 'Referral', 'Walk-in', 'Social Media', 'Other']
@@ -44,14 +44,17 @@ export default function LeadDetailPage() {
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
   const [deleting,      setDeleting]      = useState(false)
+  const [converting,    setConverting]    = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [error,         setError]         = useState(null)
   const [form,          setForm]          = useState(null)
+  const [linkedQuote,   setLinkedQuote]   = useState(null)
 
   useEffect(() => {
     fetchLead(id)
       .then(data => { setForm(data); setLoading(false) })
       .catch(err  => { setError(err.message); setLoading(false) })
+    fetchQuoteForLead(id).then(setLinkedQuote).catch(() => setLinkedQuote(null))
   }, [id])
 
   function set(field, value) {
@@ -102,6 +105,18 @@ export default function LeadDetailPage() {
     }
   }
 
+  async function handleConvert() {
+    setConverting(true)
+    setError(null)
+    try {
+      const quote = await convertLeadToQuote(form)
+      navigate(`/quotes/${quote.id}`)
+    } catch (err) {
+      setError(err.message || 'Failed to convert lead to quote')
+      setConverting(false)
+    }
+  }
+
   if (loading) return <PageContainer><p className="text-sm text-gray-400 mt-8">Loading lead…</p></PageContainer>
   if (!form)   return <PageContainer><p className="text-sm text-red-500 mt-8">{error || 'Lead not found.'}</p></PageContainer>
 
@@ -117,6 +132,12 @@ export default function LeadDetailPage() {
           <p className="text-sm text-gray-500 mt-0.5">Ref: <span className="font-mono">{form.lead_ref || '—'}</span></p>
         </div>
         <div className="flex gap-2">
+          {form.status !== 'converted' && (
+            <button type="button" onClick={handleConvert} disabled={converting}
+              className="bg-teal-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 transition-colors">
+              {converting ? 'Converting…' : '➜ Convert to Quote'}
+            </button>
+          )}
           {editing ? (
             <>
               <button type="submit" form="lead-detail-form" disabled={saving}
@@ -150,6 +171,11 @@ export default function LeadDetailPage() {
         <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${STATUS_COLORS[form.status] ?? 'bg-gray-100 text-gray-600'}`}>
           {STATUS_LABELS[form.status] ?? form.status}
         </span>
+        {linkedQuote && (
+          <button onClick={() => navigate(`/quotes/${linkedQuote.id}`)} className="ml-3 text-xs text-teal-600 hover:underline">
+            View converted quote {linkedQuote.quote_ref} →
+          </button>
+        )}
       </div>
 
       {error && (

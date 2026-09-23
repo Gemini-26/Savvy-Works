@@ -363,7 +363,7 @@ export default function InvoiceDetailPage() {
         )}
         {form.job_id && (
           <button onClick={() => navigate(`/jobs/${form.job_id}`)} className="text-xs text-teal-600 hover:underline">
-            View source job →
+            ↩ Converted from Job {form.jobs?.job_ref || ''} →
           </button>
         )}
         {form.payment_status !== 'paid' && form.status !== 'draft' && Number(form.total) > 0 && (
