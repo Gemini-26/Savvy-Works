@@ -3,16 +3,43 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { fetchAppointmentsForDay } from '../services/appointmentService'
 import AppointmentModal from '../components/AppointmentModal'
+import AppointmentPreviewModal from '../components/AppointmentPreviewModal'
 import { APPOINTMENT_STATUS_META as STATUS_META } from '../../../shared/constants/appointmentStatuses'
 
 // ─── Grid constants ───────────────────────────────────────────────────────────
 const DAY_START = 6     // 06:00
 const DAY_END   = 20    // 20:00
 const CELL_W    = 88    // px per hour
-const ROW_H     = 60    // px per technician row
+const ROW_H     = 60    // px per technician row (single job — no overlaps)
+const LANE_H    = 30    // px per stacked job when a tech has overlapping jobs
+const LANE_GAP  = 4     // px gap between stacked lanes
+const ROW_PAD   = 6     // px vertical padding inside a row
 const NAME_W    = 208   // px for the left name column
 const HOURS     = Array.from({ length: DAY_END - DAY_START }, (_, i) => DAY_START + i)
 const GRID_W    = HOURS.length * CELL_W
+
+// Greedily assigns each appointment to a vertical "lane" so that jobs
+// overlapping in time for the same technician stack below each other
+// instead of rendering on top of one another.
+function assignLanes(appointments) {
+  const sorted = [...appointments].sort(
+    (a, b) => new Date(a.scheduled_start) - new Date(b.scheduled_start)
+  )
+  const laneEndTimes = []
+  const placed = sorted.map(appt => {
+    const start = new Date(appt.scheduled_start).getTime()
+    const end   = new Date(appt.scheduled_end).getTime()
+    let lane = laneEndTimes.findIndex(endTime => endTime <= start)
+    if (lane === -1) {
+      lane = laneEndTimes.length
+      laneEndTimes.push(end)
+    } else {
+      laneEndTimes[lane] = end
+    }
+    return { appt, lane }
+  })
+  return { placed, laneCount: laneEndTimes.length || 1 }
+}
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 function toDateStr(d) { return d.toISOString().split('T')[0] }
@@ -42,7 +69,7 @@ function blockWidth(startIso, endIso) {
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-function AppointmentBlock({ appt, onEdit }) {
+function AppointmentBlock({ appt, top, height, onPreview }) {
   const meta  = STATUS_META[appt.status] || STATUS_META.not_dispatched
   const left  = blockLeft(appt.scheduled_start)
   const width = blockWidth(appt.scheduled_start, appt.scheduled_end)
@@ -51,23 +78,28 @@ function AppointmentBlock({ appt, onEdit }) {
 
   return (
     <div
-      className={`absolute top-1.5 bottom-1.5 rounded text-white text-[11px] px-2 py-0.5 overflow-hidden cursor-pointer hover:brightness-110 transition-all shadow-sm select-none z-10 ${meta.bar}`}
-      style={{ left, width }}
-      onClick={e => { e.stopPropagation(); onEdit(appt) }}
+      className={`absolute rounded text-white text-[11px] px-2 py-0.5 overflow-hidden cursor-pointer hover:brightness-110 transition-all shadow-sm select-none z-10 ${meta.bar}`}
+      style={{ left, width, top, height }}
+      onClick={e => { e.stopPropagation(); onPreview(appt) }}
       title={`${title}${cust ? ` — ${cust}` : ''}`}
     >
       <div className="font-semibold leading-tight truncate">{title}</div>
-      {cust && <div className="truncate opacity-80 text-[10px]">{cust}</div>}
+      {cust && height > 24 && <div className="truncate opacity-80 text-[10px]">{cust}</div>}
     </div>
   )
 }
 
-function TechRow({ tech, appointments, onEdit, onClickCell, isUnassigned }) {
+function TechRow({ tech, appointments, onPreview, onClickCell, isUnassigned }) {
   const initial = tech.full_name?.[0]?.toUpperCase() || '?'
   const color   = tech.color || '#6b7280'
 
+  const { placed, laneCount } = assignLanes(appointments)
+  const rowH = laneCount <= 1
+    ? ROW_H
+    : ROW_PAD * 2 + laneCount * LANE_H + (laneCount - 1) * LANE_GAP
+
   return (
-    <div className="flex border-b border-gray-100 last:border-0" style={{ height: ROW_H }}>
+    <div className="flex border-b border-gray-100 last:border-0" style={{ height: rowH }}>
       {/* Sticky left: name cell */}
       <div
         className="shrink-0 sticky left-0 z-10 bg-white border-r border-gray-200 flex items-center px-3 gap-2.5"
@@ -105,10 +137,14 @@ function TechRow({ tech, appointments, onEdit, onClickCell, isUnassigned }) {
           />
         ))}
 
-        {/* Appointment blocks */}
-        {appointments.map(appt => (
-          <AppointmentBlock key={appt.id} appt={appt} onEdit={onEdit} />
-        ))}
+        {/* Appointment blocks — stacked into lanes when they overlap */}
+        {placed.map(({ appt, lane }) => {
+          const top    = laneCount <= 1 ? ROW_PAD : ROW_PAD + lane * (LANE_H + LANE_GAP)
+          const height = laneCount <= 1 ? rowH - ROW_PAD * 2 : LANE_H
+          return (
+            <AppointmentBlock key={appt.id} appt={appt} top={top} height={height} onPreview={onPreview} />
+          )
+        })}
       </div>
     </div>
   )
@@ -121,6 +157,7 @@ export default function TimePlannerPage() {
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState(null)
   const [modal,         setModal]         = useState(null)  // null | { mode, appt?, techId?, startHour? }
+  const [preview,       setPreview]       = useState(null)  // null | appointment being previewed
   const { profiles }                      = useProfiles()
   const scrollRef                         = useRef(null)
 
@@ -167,7 +204,12 @@ export default function TimePlannerPage() {
   const nowX   = NAME_W + (nowH - DAY_START) * CELL_W
   const showNow = date === today() && nowH >= DAY_START && nowH <= DAY_END
 
-  function openEdit(appt) {
+  function openPreview(appt) {
+    setPreview(appt)
+  }
+
+  function openEditFromPreview(appt) {
+    setPreview(null)
     setModal({ mode: 'edit', appt })
   }
 
@@ -304,7 +346,7 @@ export default function TimePlannerPage() {
               <TechRow
                 tech={{ full_name: 'Unassigned Appointments', id: 'unassigned' }}
                 appointments={unassigned}
-                onEdit={openEdit}
+                onPreview={openPreview}
                 onClickCell={(_, h) => openNew({ id: 'unassigned' }, h)}
                 isUnassigned
               />
@@ -322,7 +364,7 @@ export default function TimePlannerPage() {
                     key={tech.id}
                     tech={tech}
                     appointments={byTech[tech.id] || []}
-                    onEdit={openEdit}
+                    onPreview={openPreview}
                     onClickCell={openNew}
                     isUnassigned={false}
                   />
@@ -339,6 +381,15 @@ export default function TimePlannerPage() {
         <p className="text-xs text-gray-400">
           {appointments.length} appointment{appointments.length !== 1 ? 's' : ''} on this day
         </p>
+      )}
+
+      {/* ── Preview ── */}
+      {preview && (
+        <AppointmentPreviewModal
+          appointment={preview}
+          onClose={() => setPreview(null)}
+          onEdit={openEditFromPreview}
+        />
       )}
 
       {/* ── Modal ── */}
