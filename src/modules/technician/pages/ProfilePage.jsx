@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { LogOut, Clock, MapPin, KeyRound } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import { fetchActiveShift, clockInForWork, clockOutForWork, fetchShiftHistory, onWorkShiftChange } from '../../../shared/services/workShiftService'
@@ -6,8 +7,10 @@ import { fetchOnSiteHistory } from '../services/technicianService'
 import { requestPasswordChange, fetchPendingPasswordRequest } from '../../users/services/profileService'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
+import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import BackgroundAccessCard from '../../../shared/components/BackgroundAccessCard'
 import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
+import { describeOnSiteCrew } from '../../../shared/utils/shiftSummary'
 
 function formatDuration(ms) {
   const totalMinutes = Math.round(ms / 60000)
@@ -17,6 +20,7 @@ function formatDuration(ms) {
 }
 
 export default function ProfilePage({ profile }) {
+  const navigate = useNavigate()
   const [shift, setShift] = useState(null)
   const [history, setHistory] = useState([])
   const [onSiteHistory, setOnSiteHistory] = useState([])
@@ -89,14 +93,6 @@ export default function ProfilePage({ profile }) {
     return acc
   }, {})
   const historyDays = Object.keys(historyByDay).sort((a, b) => b.localeCompare(a))
-
-  const onSiteByDay = onSiteHistory.reduce((acc, s) => {
-    const key = toDateStr(s.actual_start)
-    acc[key] = acc[key] || []
-    acc[key].push(s)
-    return acc
-  }, {})
-  const onSiteDays = Object.keys(onSiteByDay).sort((a, b) => b.localeCompare(a))
 
   return (
     <div className="p-4 space-y-4">
@@ -200,35 +196,18 @@ export default function ProfilePage({ profile }) {
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
-          <MapPin size={16} /> On-Site Time
+          <MapPin size={16} /> On-Site Sessions ({onSiteHistory.length})
         </div>
         {loading ? (
           <p className="text-sm text-gray-400">Loading…</p>
-        ) : onSiteDays.length === 0 ? (
-          <p className="text-sm text-gray-400">No on-site records yet.</p>
         ) : (
-          <div className="space-y-3">
-            {onSiteDays.map(day => {
-              const entries = onSiteByDay[day]
-              const totalMs = entries.reduce((sum, s) => s.actual_end ? sum + (new Date(s.actual_end) - new Date(s.actual_start)) : sum, 0)
-              return (
-                <div key={day} className="border-t border-gray-100 pt-2 first:border-t-0 first:pt-0">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-semibold text-gray-500">{formatDate(day)}</p>
-                    <p className="text-xs font-semibold text-gray-700">{formatDuration(totalMs)}</p>
-                  </div>
-                  {entries.map(s => (
-                    <div key={s.id} className="flex items-center justify-between">
-                      <p className="text-xs text-gray-400 truncate">{s.job_title || s.job_ref || 'Job'}</p>
-                      <p className="text-xs text-gray-400 shrink-0">
-                        {formatTime(s.actual_start)} – {s.actual_end ? formatTime(s.actual_end) : 'In progress'}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              )
-            })}
-          </div>
+          <OnSiteSessionsList
+            sessions={onSiteHistory}
+            pageSize={10}
+            renderWith={describeOnSiteCrew}
+            onOpenJob={s => s.appointment_id && navigate(`/jobs/${s.appointment_id}`)}
+            emptyLabel="No on-site records yet."
+          />
         )}
       </div>
 

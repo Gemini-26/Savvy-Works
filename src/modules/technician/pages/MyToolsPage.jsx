@@ -29,6 +29,20 @@ function OverdueBadge() {
   return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Overdue</span>
 }
 
+// Every group of held items carries its own count and liability, so a
+// technician can see what the storeroom is holding them to separately
+// from what's their own — mirroring the per-list liability admins see.
+function SectionHeading({ label, count, value }) {
+  return (
+    <div className="flex items-baseline justify-between gap-2 mb-2">
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
+      <p className="text-xs text-gray-500 tabular-nums">
+        {count} item{count === 1 ? '' : 's'} · Liability: {formatCurrency(value)}
+      </p>
+    </div>
+  )
+}
+
 function ToolMenu({ onReturn }) {
   const [open, setOpen] = useState(false)
   return (
@@ -310,8 +324,6 @@ export default function MyToolsPage({ profile }) {
 
   if (loading) return <div className="p-4 text-sm text-gray-500">Loading…</div>
 
-  const myValue = myTools.reduce((s, t) => s + Number(t.value || 0), 0)
-
   // A tool with no distinct owner (owner_id null, or owner === self) came
   // from the storeroom rather than a colleague — the same signal already
   // used elsewhere in this module to detect provenance.
@@ -319,6 +331,15 @@ export default function MyToolsPage({ profile }) {
   const colleagueHeld = myTools.filter(t => t.owner && t.owner.id !== profile.id)
   const myOwnTools = myTools.filter(t => t.item_kind === 'tool' && t.owner && t.owner.id === profile.id)
   const myOwnInventory = myTools.filter(t => t.item_kind === 'inventory' && t.owner && t.owner.id === profile.id)
+
+  // Value is counted per unit held, the same way the admin panel totals a
+  // list (value × quantity), so the two views agree on what a technician
+  // is carrying.
+  const sumValue = tools => tools.reduce((s, t) => s + Number(t.value || 0) * (quantities[t.id] || 1), 0)
+  const myValue = sumValue(myTools)
+  const storeroomValue = sumValue(storeroomHeld)
+  const ownValue = sumValue(myOwnTools) + sumValue(myOwnInventory)
+  const colleagueValue = sumValue(colleagueHeld)
 
   const TABS = [
     { key: 'storeroom', label: 'Storeroom Tools' },
@@ -342,6 +363,22 @@ export default function MyToolsPage({ profile }) {
         <div className="bg-white rounded-xl border border-gray-200 p-3">
           <div className="text-lg font-bold text-gray-900 tabular-nums">{formatCurrency(myValue)}</div>
           <div className="text-xs text-gray-500">My liability</div>
+          <dl className="mt-2 space-y-0.5 text-xs">
+            <div className="flex justify-between gap-2">
+              <dt className="text-gray-500">Storeroom tools</dt>
+              <dd className="font-medium text-gray-700 tabular-nums">{formatCurrency(storeroomValue)}</dd>
+            </div>
+            <div className="flex justify-between gap-2">
+              <dt className="text-gray-500">My own</dt>
+              <dd className="font-medium text-gray-700 tabular-nums">{formatCurrency(ownValue)}</dd>
+            </div>
+            {colleagueValue > 0 && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-gray-500">From colleagues</dt>
+                <dd className="font-medium text-gray-700 tabular-nums">{formatCurrency(colleagueValue)}</dd>
+              </div>
+            )}
+          </dl>
         </div>
       </div>
 
@@ -423,7 +460,7 @@ export default function MyToolsPage({ profile }) {
           )}
 
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">With me from storeroom</p>
+            <SectionHeading label="With me from storeroom" count={storeroomHeld.length} value={storeroomValue} />
             {storeroomHeld.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-6">No storeroom tools checked out to you.</p>
             ) : (
@@ -500,6 +537,7 @@ export default function MyToolsPage({ profile }) {
 
       {tab === 'mine' && (
         <div>
+          <SectionHeading label="My own tools" count={myOwnTools.length} value={sumValue(myOwnTools)} />
           {myOwnTools.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-6">No tools of your own.</p>
           ) : (
@@ -523,6 +561,7 @@ export default function MyToolsPage({ profile }) {
 
       {tab === 'inventory' && (
         <div>
+          <SectionHeading label="My own inventory" count={myOwnInventory.length} value={sumValue(myOwnInventory)} />
           {myOwnInventory.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-6">No inventory items of your own.</p>
           ) : (
@@ -680,7 +719,7 @@ export default function MyToolsPage({ profile }) {
           )}
 
           <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">With me from colleagues</p>
+            <SectionHeading label="With me from colleagues" count={colleagueHeld.length} value={colleagueValue} />
             {colleagueHeld.length === 0 ? (
               <p className="text-sm text-gray-400 text-center py-6">No colleague tools checked out to you.</p>
             ) : (

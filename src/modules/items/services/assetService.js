@@ -59,6 +59,11 @@ export async function deleteAsset(id) {
   if (error) throw error
   if (!data || data.length === 0) throw new Error('Delete failed — no rows were changed. Check your permissions.')
 
+  // A deleted asset must also leave every technician's list, or it keeps
+  // counting towards their liability forever — nobody is holding it, and no
+  // admin screen offers a way to take it off the list once it's deactivated.
+  await supabase.from('asset_list_items').delete().eq('asset_id', id)
+
   if (asset.holder_id) {
     await supabase.from('asset_checkout_log').insert([{
       asset_id: id, action: 'returned', from_id: asset.holder_id,
@@ -122,12 +127,14 @@ export async function fetchStoreroomTools(search) {
   return data || []
 }
 
-// Tools currently held by someone other than this technician.
+// Tools currently held by someone other than this technician — both tools
+// on loan (`checked_out`) and tools sitting with their registered owner
+// (`with_owner`), since a colleague's own kit is just as borrowable.
 export async function fetchBorrowableTools(technicianId, search) {
   let query = supabase
     .from('assets')
     .select(ASSET_SELECT)
-    .eq('status', 'checked_out')
+    .in('status', ['checked_out', 'with_owner'])
     .eq('asset_group', 'tool_inventory')
     .neq('holder_id', technicianId)
     .order('name')
@@ -765,27 +772,38 @@ export async function fetchAssetFullHistory(assetId) {
 
 // ── Tool / Inventory lists ──────────────────────────────────────
 
+const LIST_SELECT = '*, assignee:assigned_to(full_name), items:asset_list_items(id, quantity, asset:asset_id(id, name, value, condition, item_kind, category_id, barcode, serial_number, holder_id, status, active, owner_id, owner:owner_id(id, full_name)))'
+
+// Assets are soft-deleted, so a list can still reference one that has been
+// deactivated. Those are dropped here rather than rendered: they can't be
+// held by anyone, and leaving them in inflates the liability totals that
+// both this panel and the technician's own portal report.
+const withoutDeletedItems = list => ({
+  ...list,
+  items: (list.items || []).filter(i => i.asset && i.asset.active !== false),
+})
+
 export async function fetchAssetLists(listType, assignedTo) {
   let query = supabase
     .from('asset_lists')
-    .select('*, assignee:assigned_to(full_name), items:asset_list_items(id, quantity, asset:asset_id(id, name, value, condition, item_kind, category_id, barcode, serial_number, holder_id, status, owner_id, owner:owner_id(id, full_name)))')
+    .select(LIST_SELECT)
     .order('name')
   if (listType)   query = query.eq('list_type', listType)
   if (assignedTo) query = query.eq('assigned_to', assignedTo)
   const { data, error } = await query
   if (error) throw error
-  return data || []
+  return (data || []).map(withoutDeletedItems)
 }
 
 export async function fetchAssetList(id) {
   const { data, error } = await supabase
     .from('asset_lists')
-    .select('*, assignee:assigned_to(full_name), items:asset_list_items(id, quantity, asset:asset_id(id, name, value, condition, item_kind, category_id, barcode, serial_number, holder_id, status, owner_id, owner:owner_id(id, full_name)))')
+    .select(LIST_SELECT)
     .eq('id', id)
     .maybeSingle()
   if (error) throw error
   if (!data) throw new Error('List not found.')
-  return data
+  return withoutDeletedItems(data)
 }
 
 export async function createAssetList({ name, listType, assignedTo, assetIds = [] }) {
@@ -848,13 +866,15 @@ export async function updateListItemQuantity(itemId, quantity) {
 export async function fetchTechnicianLiabilityTotals() {
   const { data, error } = await supabase
     .from('asset_lists')
-    .select('assigned_to, items:asset_list_items(quantity, asset:asset_id(value))')
+    .select('assigned_to, items:asset_list_items(quantity, asset:asset_id(value, active))')
     .not('assigned_to', 'is', null)
   if (error) throw error
 
   const totals = {}
   for (const list of data || []) {
-    const sum = (list.items || []).reduce((s, i) => s + Number(i.asset?.value || 0) * (i.quantity || 1), 0)
+    const sum = (list.items || [])
+      .filter(i => i.asset && i.asset.active !== false)
+      .reduce((s, i) => s + Number(i.asset.value || 0) * (i.quantity || 1), 0)
     totals[list.assigned_to] = (totals[list.assigned_to] || 0) + sum
   }
   return totals
@@ -889,10 +909,18 @@ export async function duplicateAssetList(id, { name, assignedTo } = {}) {
         name: src.name,
         item_kind: src.item_kind,
         asset_group: 'tool_inventory',
+        category_id: src.category_id || null,
         value: src.value,
         condition: src.condition || 'Good',
+        // A clone made for a technician is a fresh unit issued to them —
+        // their own kit, not a storeroom loan — so it gets the same
+        // ownership as an item created straight onto their list: owner
+        // is the technician and it rests `with_owner`. Leaving owner_id
+        // null here made every duplicated item look like storeroom stock
+        // and dumped a technician's whole toolkit into the Storeroom tab.
+        owner_id: assignedTo || null,
         holder_id: assignedTo || null,
-        status: assignedTo ? 'checked_out' : 'warehouse',
+        status: assignedTo ? 'with_owner' : 'warehouse',
         since: assignedTo ? nowIso : null,
       }])
       .select()

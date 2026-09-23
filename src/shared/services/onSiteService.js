@@ -12,7 +12,7 @@ export async function fetchOnSiteSessions(technicianId, limit = 200) {
     .from('appointment_assignments')
     .select(`
       id, actual_start, actual_end,
-      appointments(job_id, jobs(job_ref, title)),
+      appointments(id, job_id, jobs(job_ref, title, site_address, site_city)),
       assignment_team_members(team_members(id, full_name, role_title))
     `)
     .eq('technician_id', technicianId)
@@ -25,9 +25,13 @@ export async function fetchOnSiteSessions(technicianId, limit = 200) {
     id: row.id,
     actual_start: row.actual_start,
     actual_end: row.actual_end,
+    // Both ids travel with the session: admin screens open a job by job_id,
+    // the technician portal opens the same work by appointment id.
+    appointment_id: row.appointments?.id,
     job_id: row.appointments?.job_id,
     job_ref: row.appointments?.jobs?.job_ref,
     job_title: row.appointments?.jobs?.title,
+    site: [row.appointments?.jobs?.site_address, row.appointments?.jobs?.site_city].filter(Boolean).join(', '),
     team_members: (row.assignment_team_members || []).map(t => t.team_members).filter(Boolean),
   }))
 }

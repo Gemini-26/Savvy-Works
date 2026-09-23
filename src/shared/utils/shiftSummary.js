@@ -104,3 +104,12 @@ export function formatMonthLabel(monthKey) {
   const [y, m] = monthKey.split('-').map(Number)
   return new Date(y, m - 1, 1).toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' })
 }
+
+// The "with …" line under a technician's on-site session: the crew they
+// signed onto the job, then where it was. Worded so it reads the same to an
+// admin looking at someone else's log as to the technician reading their own.
+export function describeOnSiteCrew(session) {
+  const names = (session.team_members || []).map(m => m.full_name).filter(Boolean)
+  const crew = names.length ? `With ${names.join(', ')}` : 'No crew'
+  return session.site ? `${crew} · ${session.site}` : crew
+}

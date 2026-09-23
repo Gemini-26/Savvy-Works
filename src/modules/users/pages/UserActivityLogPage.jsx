@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { LogIn, KeyRound, Clock, Briefcase, Wrench } from 'lucide-react'
+import { LogIn, KeyRound, Clock, Briefcase, Wrench, MapPin } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchProfile } from '../services/profileService'
 import { fetchUserActivityLog } from '../services/activityLogService'
 import { fetchShiftHistory } from '../../../shared/services/workShiftService'
 import { fetchOnSiteSessions } from '../../../shared/services/onSiteService'
 import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
+import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
+import { describeOnSiteCrew } from '../../../shared/utils/shiftSummary'
 
 const CATEGORY_STYLE = {
   login:    { icon: LogIn,     color: 'text-blue-600',   bg: 'bg-blue-50',   label: 'Login' },
@@ -24,6 +26,11 @@ const FILTERS = [
   { key: 'job',      label: 'Job Responses' },
   { key: 'tools',    label: 'Tool Transactions' },
 ]
+
+// On-site sessions aren't activity-log events — they're their own record, so
+// they get their own tab alongside the event filters rather than a second
+// card stacked under the log.
+const ONSITE_TAB = 'onsite'
 
 function formatTimestamp(iso) {
   return new Date(iso).toLocaleString(undefined, {
@@ -62,6 +69,10 @@ export default function UserActivityLogPage() {
 
   const initial = profile.full_name?.[0]?.toUpperCase() || '?'
   const filtered = filter === 'all' ? events : events.filter(e => e.category === filter)
+  // Technicians always get the tab, even at zero, so the absence of on-site
+  // work reads as a fact rather than a missing feature. Anyone else only
+  // gets it if they actually have sessions.
+  const showOnSite = onSite.length > 0 || profile.role === 'technician'
 
   const counts = events.reduce((acc, e) => {
     acc[e.category] = (acc[e.category] || 0) + 1
@@ -112,10 +123,30 @@ export default function UserActivityLogPage() {
             {f.label}{f.key !== 'all' ? ` (${counts[f.key] || 0})` : ` (${events.length})`}
           </button>
         ))}
+        {showOnSite && (
+          <button
+            type="button"
+            onClick={() => setFilter(ONSITE_TAB)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors inline-flex items-center gap-1.5 ${
+              filter === ONSITE_TAB
+                ? 'bg-gray-900 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            <MapPin size={12} /> On-Site Sessions ({onSite.length})
+          </button>
+        )}
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-2xl">
-        {filtered.length === 0 ? (
+        {filter === ONSITE_TAB ? (
+          <OnSiteSessionsList
+            sessions={onSite}
+            renderWith={describeOnSiteCrew}
+            onOpenJob={s => s.job_id && navigate(`/jobs/${s.job_id}`)}
+            emptyLabel="This technician hasn't clocked on site yet."
+          />
+        ) : filtered.length === 0 ? (
           <p className="text-sm text-gray-400">No activity recorded yet.</p>
         ) : (
           <ul className="space-y-4">
