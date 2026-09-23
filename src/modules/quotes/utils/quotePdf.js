@@ -1,10 +1,11 @@
 import { jsPDF } from 'jspdf'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
-import { loadBrandingImages, drawPdfHeader } from '../../finance/utils/pdfHeader'
+import { loadBrandingImages, drawPdfHeader, drawTermsPage, drawTextLines } from '../../finance/utils/pdfHeader'
 
 const MARGIN = 40
 const PAGE_W = 595.28 // A4 pt
+const PAGE_H = 841.89 // A4 pt
 const CONTENT_W = PAGE_W - MARGIN * 2
 
 export async function buildQuotePdf(quote, lineItems) {
@@ -36,7 +37,7 @@ export async function buildQuotePdf(quote, lineItems) {
     [quote.site_city, quote.site_county].filter(Boolean).join(', '),
     quote.site_postcode,
   ].filter(Boolean)
-  customerLines.forEach((line, i) => doc.text(line, MARGIN, y + i * 14))
+  const customerEndY = drawTextLines(doc, customerLines, { x: MARGIN, y, width: CONTENT_W / 2 - 20 })
 
   const detailLines = [
     ['Title', quote.title || '—'],
@@ -50,8 +51,9 @@ export async function buildQuotePdf(quote, lineItems) {
     doc.setTextColor(20, 20, 20)
     doc.text(value, MARGIN + CONTENT_W / 2 + 80, y + i * 14)
   })
+  const detailEndY = y + detailLines.length * 14
 
-  y += Math.max(customerLines.length, detailLines.length) * 14 + 20
+  y = Math.max(customerEndY, detailEndY) + 20
 
   // ── Line items table ──────────────────────────────────────────────────────
   const colX = {
@@ -132,7 +134,7 @@ export async function buildQuotePdf(quote, lineItems) {
   doc.text(formatCurrency(quote.total), PAGE_W - MARGIN, y, { align: 'right' })
   y += 30
 
-  // ── Notes / Terms ────────────────────────────────────────────────────────
+  // ── Notes ─────────────────────────────────────────────────────────────────
   if (quote.notes) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
@@ -142,17 +144,13 @@ export async function buildQuotePdf(quote, lineItems) {
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(20, 20, 20)
     doc.text(quote.notes, MARGIN, y, { maxWidth: CONTENT_W })
-    y += 30
   }
+
+  // ── Terms — own dedicated page(s), since this is usually several
+  // paragraphs of boilerplate (warranties, T&Cs) that would otherwise
+  // overflow off the bottom of page 1 or collide with the totals above it ──
   if (quote.terms) {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9)
-    doc.setTextColor(100, 100, 100)
-    doc.text('TERMS', MARGIN, y)
-    y += 14
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(20, 20, 20)
-    doc.text(quote.terms, MARGIN, y, { maxWidth: CONTENT_W })
+    drawTermsPage(doc, quote.terms, { marginX: MARGIN, pageW: PAGE_W, pageH: PAGE_H })
   }
 
   return doc

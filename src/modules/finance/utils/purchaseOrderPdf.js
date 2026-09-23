@@ -1,7 +1,7 @@
 import { jsPDF } from 'jspdf'
 import { format } from 'date-fns'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
-import { loadBrandingImages, drawCompanyBlock, COMPANY_NAME, COMPANY_ADDRESS_LINES } from './pdfHeader'
+import { loadBrandingImages, drawCompanyBlock, drawTermsPage, drawTextLines, COMPANY_NAME, COMPANY_ADDRESS_LINES } from './pdfHeader'
 
 const MARGIN = 40
 const PAGE_W = 595.28 // A4 pt
@@ -76,7 +76,7 @@ export async function buildPurchaseOrderPdf(po, lineItems, catalogue = []) {
     [po.suppliers?.city, po.suppliers?.county].filter(Boolean).join(', '),
     po.suppliers?.postcode,
   ].filter(Boolean)
-  supplierLines.forEach(line => { doc.text(line, MARGIN, leftY); leftY += 13 })
+  leftY = drawTextLines(doc, supplierLines, { x: MARGIN, y: leftY, width: halfW - 20, lineHeight: 13 })
 
   const deliveryLines = po.customers?.customer_name
     ? [
@@ -87,7 +87,7 @@ export async function buildPurchaseOrderPdf(po, lineItems, catalogue = []) {
         po.customer_sites?.postal_code,
       ].filter(Boolean)
     : [COMPANY_NAME, ...COMPANY_ADDRESS_LINES]
-  deliveryLines.forEach(line => { doc.text(line, rightX, rightY); rightY += 13 })
+  rightY = drawTextLines(doc, deliveryLines, { x: rightX, y: rightY, width: halfW - 20, lineHeight: 13 })
 
   y = Math.max(leftY, rightY) + 20
 
@@ -177,7 +177,7 @@ export async function buildPurchaseOrderPdf(po, lineItems, catalogue = []) {
   doc.text(formatCurrency(po.total), PAGE_W - MARGIN, y, { align: 'right' })
   y += 30
 
-  // ── Notes / Terms ─────────────────────────────────────────────────────────
+  // ── Notes ─────────────────────────────────────────────────────────────────
   if (po.notes) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
@@ -187,17 +187,13 @@ export async function buildPurchaseOrderPdf(po, lineItems, catalogue = []) {
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(20, 20, 20)
     doc.text(po.notes, MARGIN, y, { maxWidth: CONTENT_W })
-    y += 30
   }
+
+  // ── Terms — own dedicated page(s), since this is usually several
+  // paragraphs of boilerplate that would otherwise overflow off the bottom
+  // of the page it was appended to ────────────────────────────────────────
   if (po.terms) {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9)
-    doc.setTextColor(100, 100, 100)
-    doc.text('TERMS', MARGIN, y)
-    y += 14
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(20, 20, 20)
-    doc.text(po.terms, MARGIN, y, { maxWidth: CONTENT_W })
+    drawTermsPage(doc, po.terms, { marginX: MARGIN, pageW: PAGE_W, pageH: PAGE_H })
   }
 
   // ── Page numbers ─────────────────────────────────────────────────────────

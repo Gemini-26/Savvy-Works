@@ -113,3 +113,60 @@ export function drawPdfHeader(doc, branding, { title, ref, marginX, pageW, margi
 
   return y
 }
+
+// Draws a block of text entries starting at (x, y), one below the other —
+// but unlike a naive `entries.forEach((line, i) => y + i * lineHeight)`,
+// this actually measures how many lines each entry takes before advancing
+// the cursor. An entry that's free text (e.g. a site address typed into a
+// textarea) can secretly contain an embedded line break, or simply be too
+// long for the column — either way the naive fixed-offset approach draws
+// the *next* entry right on top of it. Splitting on embedded newlines and
+// wrapping to `width` first means the cursor always lands below whatever
+// was actually rendered. Returns the y position after the last line drawn,
+// so callers can size a two-column block by the taller column's real height.
+export function drawTextLines(doc, entries, { x, y, width, lineHeight = 14 }) {
+  let cursorY = y
+  entries.filter(Boolean).forEach(entry => {
+    String(entry).split('\n').forEach(segment => {
+      const wrapped = width ? doc.splitTextToSize(segment, width) : [segment]
+      wrapped.forEach(line => {
+        doc.text(line, x, cursorY)
+        cursorY += lineHeight
+      })
+    })
+  })
+  return cursorY
+}
+
+// Prints a free-text block (terms & conditions, long notes, etc.) starting
+// on a fresh page, preserving blank lines already in the text as paragraph
+// gaps and wrapping/paginating as needed so long boilerplate flows onto
+// extra pages instead of overflowing off whatever page it was appended to.
+// Shared by every PDF (quote / invoice / purchase order / job) that has a
+// free-text field long enough to need this.
+export function drawTermsPage(doc, text, { marginX, pageW, pageH, heading } = {}) {
+  const contentW = pageW - marginX * 2
+  doc.addPage()
+  let y = marginX
+
+  if (heading) {
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.setTextColor(100, 100, 100)
+    doc.text(heading, marginX, y)
+    y += 16
+  }
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(20, 20, 20)
+
+  text.split('\n').forEach(rawLine => {
+    if (!rawLine.trim()) { y += 8; return }
+    doc.splitTextToSize(rawLine, contentW).forEach(line => {
+      if (y > pageH - marginX) { doc.addPage(); y = marginX }
+      doc.text(line, marginX, y)
+      y += 13
+    })
+  })
+}

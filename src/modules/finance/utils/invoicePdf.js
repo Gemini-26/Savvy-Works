@@ -1,11 +1,12 @@
 import { jsPDF } from 'jspdf'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
-import { loadBrandingImages, drawPdfHeader } from './pdfHeader'
+import { loadBrandingImages, drawPdfHeader, drawTermsPage, drawTextLines } from './pdfHeader'
 import { drawInvoiceTermsPage } from './invoiceTermsPage'
 
 const MARGIN = 40
 const PAGE_W = 595.28 // A4 pt
+const PAGE_H = 841.89 // A4 pt
 const CONTENT_W = PAGE_W - MARGIN * 2
 
 function formatDateTime(iso) {
@@ -42,7 +43,7 @@ export async function buildInvoicePdf(invoice, lineItems, technicians) {
     [invoice.site_city, invoice.site_county].filter(Boolean).join(', '),
     invoice.site_postcode,
   ].filter(Boolean)
-  billLines.forEach((line, i) => doc.text(line, MARGIN, y + i * 14))
+  const billEndY = drawTextLines(doc, billLines, { x: MARGIN, y, width: CONTENT_W / 2 - 20 })
 
   const detailLines = [
     ['Title', invoice.title || '—'],
@@ -56,8 +57,9 @@ export async function buildInvoicePdf(invoice, lineItems, technicians) {
     doc.setTextColor(20, 20, 20)
     doc.text(value, MARGIN + CONTENT_W / 2 + 80, y + i * 14)
   })
+  const detailEndY = y + detailLines.length * 14
 
-  y += Math.max(billLines.length, detailLines.length) * 14 + 20
+  y = Math.max(billEndY, detailEndY) + 20
 
   // ── Technicians (who did the work) ──────────────────────────────────────
   if (technicians && technicians.length > 0) {
@@ -169,7 +171,7 @@ export async function buildInvoicePdf(invoice, lineItems, technicians) {
   doc.text(formatCurrency(invoice.total), PAGE_W - MARGIN, y, { align: 'right' })
   y += 30
 
-  // ── Notes / Terms ────────────────────────────────────────────────────────
+  // ── Notes ─────────────────────────────────────────────────────────────────
   if (invoice.notes) {
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(9)
@@ -179,17 +181,13 @@ export async function buildInvoicePdf(invoice, lineItems, technicians) {
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(20, 20, 20)
     doc.text(invoice.notes, MARGIN, y, { maxWidth: CONTENT_W })
-    y += 30
   }
+
+  // ── Terms — own dedicated page(s), since this is usually several
+  // paragraphs of boilerplate that would otherwise overflow off the bottom
+  // of the page it was appended to ────────────────────────────────────────
   if (invoice.terms) {
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(9)
-    doc.setTextColor(100, 100, 100)
-    doc.text('TERMS', MARGIN, y)
-    y += 14
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(20, 20, 20)
-    doc.text(invoice.terms, MARGIN, y, { maxWidth: CONTENT_W })
+    drawTermsPage(doc, invoice.terms, { marginX: MARGIN, pageW: PAGE_W, pageH: PAGE_H })
   }
 
   drawInvoiceTermsPage(doc)
