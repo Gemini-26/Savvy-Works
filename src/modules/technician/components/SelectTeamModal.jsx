@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { fetchTeamMembers } from '../../users/services/teamMembersService'
+import { fetchTeamMembers, createCasualTeamMember } from '../../users/services/teamMembersService'
 
 // Shown right before a technician clocks in on site — lets them say
 // who (if anyone) came with them, without forcing a selection.
@@ -8,6 +8,9 @@ export default function SelectTeamModal({ onConfirm, onClose, busy }) {
   const [selected, setSelected] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [addingCasual, setAddingCasual] = useState(false)
+  const [casualName, setCasualName] = useState('')
+  const [savingCasual, setSavingCasual] = useState(false)
 
   useEffect(() => {
     fetchTeamMembers(true)
@@ -18,6 +21,24 @@ export default function SelectTeamModal({ onConfirm, onClose, busy }) {
 
   function toggle(id) {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+  }
+
+  async function handleAddCasual(e) {
+    e.preventDefault()
+    if (!casualName.trim()) return
+    setSavingCasual(true)
+    setError(null)
+    try {
+      const member = await createCasualTeamMember(casualName.trim())
+      setMembers(prev => [...prev, member])
+      setSelected(prev => [...prev, member.id])
+      setCasualName('')
+      setAddingCasual(false)
+    } catch (err) {
+      setError(err.message || 'Failed to add casual labourer')
+    } finally {
+      setSavingCasual(false)
+    }
   }
 
   return (
@@ -54,13 +75,50 @@ export default function SelectTeamModal({ onConfirm, onClose, busy }) {
                       {isSelected && '✓'}
                     </span>
                     <span className="min-w-0">
-                      <span className="block text-sm font-medium text-gray-900 truncate">{m.full_name}</span>
+                      <span className="block text-sm font-medium text-gray-900 truncate">
+                        {m.full_name}
+                        {m.is_casual && <span className="ml-1.5 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 align-middle">Casual</span>}
+                      </span>
                       {m.role_title && <span className="block text-xs text-gray-500 truncate">{m.role_title}</span>}
                     </span>
                   </button>
                 )
               })}
             </div>
+          )}
+
+          {addingCasual ? (
+            <form onSubmit={handleAddCasual} className="flex gap-2 pt-1">
+              <input
+                autoFocus
+                value={casualName}
+                onChange={e => setCasualName(e.target.value)}
+                placeholder="Casual labourer's name"
+                className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={savingCasual || !casualName.trim()}
+                className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
+              >
+                {savingCasual ? 'Adding…' : 'Add'}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAddingCasual(false); setCasualName('') }}
+                className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-600"
+              >
+                Cancel
+              </button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAddingCasual(true)}
+              className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 pt-1"
+            >
+              <span className="text-lg leading-none">+</span> Add daily casual
+            </button>
           )}
 
           <div className="flex gap-3 pt-2">

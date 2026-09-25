@@ -202,6 +202,7 @@ export default function JobDetailPage({ profile }) {
                 <div key={m.id} className="flex items-center justify-between text-sm">
                   <span className="text-gray-800 truncate">
                     {m.full_name}
+                    {m.is_casual && <span className="ml-1 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 align-middle">Casual</span>}
                     {m.role_title && <span className="text-xs text-gray-400"> · {m.role_title}</span>}
                   </span>
                   <span className="text-xs text-gray-500 shrink-0">{appt.actual_start ? onSiteLabel : 'Not clocked in'}</span>

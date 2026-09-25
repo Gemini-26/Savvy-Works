@@ -68,6 +68,22 @@ export async function createTeamMember({ full_name, phone, role_title }) {
   return data[0]
 }
 
+// A one-day labourer added on the fly from the clock-in screen instead of
+// being pre-registered. Created inactive so it doesn't linger in the
+// reusable Active Team Members roster, and is_casual keeps it distinguishable
+// from an ordinary deactivated member in the admin UI. No duplicate-name
+// check — unlike the permanent roster, it's expected that casuals reuse
+// common names across different days/jobs.
+export async function createCasualTeamMember(full_name) {
+  const profile = await getCurrentProfile().catch(() => null)
+  const { data, error } = await supabase
+    .from('team_members')
+    .insert([{ full_name, is_casual: true, is_active: false, created_by: profile?.id ?? null }])
+    .select()
+  if (error) throw error
+  return data[0]
+}
+
 export async function setTeamMemberActive(id, is_active) {
   const { error } = await supabase.from('team_members').update({ is_active }).eq('id', id)
   if (error) throw error
@@ -92,7 +108,7 @@ export async function updateTeamMember(id, { full_name, phone, role_title }) {
 export async function fetchAssignmentTeamMembers(assignmentId) {
   const { data, error } = await supabase
     .from('assignment_team_members')
-    .select('team_member_id, team_members(id, full_name, phone, role_title)')
+    .select('team_member_id, team_members(id, full_name, phone, role_title, is_casual)')
     .eq('assignment_id', assignmentId)
   if (error) throw error
   return (data || []).map(r => r.team_members).filter(Boolean)

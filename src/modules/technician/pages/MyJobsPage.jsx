@@ -33,7 +33,7 @@ const JOB_STATUS_STYLES = {
   invoiced:             'bg-green-100 text-green-700',
 }
 
-function AppointmentCard({ appt, onRespond }) {
+function AppointmentCard({ appt, onRespond, basePath }) {
   const navigate = useNavigate()
   const job = appt.jobs
   const isPending = PENDING_RESPONSE_STATUSES.includes(appt.status)
@@ -51,7 +51,7 @@ function AppointmentCard({ appt, onRespond }) {
 
   return (
     <div
-      onClick={() => navigate(`/jobs/${appt.id}`)}
+      onClick={() => navigate(`${basePath}/${appt.id}`)}
       className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 active:bg-gray-50"
     >
       <div className="flex items-start justify-between gap-2">
@@ -108,7 +108,7 @@ function AppointmentCard({ appt, onRespond }) {
   )
 }
 
-export default function MyJobsPage({ profile }) {
+export default function MyJobsPage({ profile, basePath = '/jobs' }) {
   const [appointments, setAppointments] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -188,7 +188,7 @@ export default function MyJobsPage({ profile }) {
             <p className="text-sm text-gray-400 text-center py-8">No jobs in this category.</p>
           ) : (
             filtered.map(appt => (
-              <AppointmentCard key={appt.id} appt={appt} onRespond={handleRespond} />
+              <AppointmentCard key={appt.id} appt={appt} onRespond={handleRespond} basePath={basePath} />
             ))
           )}
         </div>
@@ -200,7 +200,7 @@ export default function MyJobsPage({ profile }) {
 
           <div className="space-y-3">
             {active.map(appt => (
-              <AppointmentCard key={appt.id} appt={appt} onRespond={handleRespond} />
+              <AppointmentCard key={appt.id} appt={appt} onRespond={handleRespond} basePath={basePath} />
             ))}
           </div>
 
@@ -209,7 +209,7 @@ export default function MyJobsPage({ profile }) {
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">History</p>
               <div className="space-y-3">
                 {past.map(appt => (
-                  <AppointmentCard key={appt.id} appt={appt} onRespond={handleRespond} />
+                  <AppointmentCard key={appt.id} appt={appt} onRespond={handleRespond} basePath={basePath} />
                 ))}
               </div>
             </div>

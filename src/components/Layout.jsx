@@ -52,6 +52,7 @@ const NAV = [
     children: [
       { label: 'Dashboard',          path: '/jobs/dashboard' },
       { label: 'New Job',            path: '/jobs/new' },
+      { label: 'My Jobs',            path: '/my-jobs' },
       { label: 'Active Jobs',        path: '/jobs/active' },
       { label: 'Completed Jobs',     path: '/jobs/completed' },
       { label: 'Unassigned Jobs',    path: '/jobs/unassigned' },
@@ -553,6 +554,10 @@ export default function Layout() {
           style={{ position:'fixed', top:userPos.top, left:userPos.left, width:192, zIndex:9999 }}
           className="bg-white border border-gray-200 rounded-xl shadow-xl py-1.5"
         >
+          <NavLink to="/my-jobs" onClick={() => setUserOpen(false)}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg mx-1">
+            <Briefcase size={14}/> My Jobs
+          </NavLink>
           <NavLink to="/profile" onClick={() => setUserOpen(false)}
             className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg mx-1">
             <User size={14}/> My Profile

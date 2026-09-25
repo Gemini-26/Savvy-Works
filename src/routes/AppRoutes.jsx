@@ -52,6 +52,12 @@ export default function AppRoutes({ session }) {
             <Route index element={<Dashboard />} />
             <Route path="profile" element={<MyProfilePage profile={profile} />} />
 
+            {/* Lets non-technician staff (admins) accept/attend/complete their
+                own appointment assignments through the exact same flow a
+                technician uses, instead of a separate admin-only shortcut. */}
+            <Route path="my-jobs" element={<MyJobsPage profile={profile} basePath="/my-jobs" />} />
+            <Route path="my-jobs/:id" element={<JobDetailPage profile={profile} />} />
+
             {routes.map((route) => (
               <Route
                 key={route.path}

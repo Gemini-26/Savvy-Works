@@ -72,14 +72,15 @@ export async function respondToAppointment(appointmentId, status) {
   if (error) throw error
 
   const profile = await getCurrentProfile().catch(() => null)
+  const actorFallback = profile?.role === 'admin' ? 'An admin' : 'A technician'
   const jobLabel = appt?.jobs?.title || appt?.jobs?.job_ref || 'a job'
   const verb = status === 'accepted' ? 'accepted' : 'declined'
 
   if (appt?.job_id) {
-    await logActivity(appt.job_id, `technician_${verb}`, `${profile?.full_name || 'Technician'} ${verb} the appointment`).catch(() => {})
+    await logActivity(appt.job_id, `technician_${verb}`, `${profile?.full_name || actorFallback} ${verb} the appointment`).catch(() => {})
     await notifyAdmins({
       title: `Job ${verb}`,
-      body: `${profile?.full_name || 'A technician'} ${verb} "${jobLabel}".`,
+      body: `${profile?.full_name || actorFallback} ${verb} "${jobLabel}".`,
       link: `/jobs/${appt.job_id}`,
     }).catch(() => {})
   }
@@ -104,14 +105,15 @@ export async function updateAppointmentStatus(appointmentId, status) {
   if (error) throw error
 
   const profile = await getCurrentProfile().catch(() => null)
+  const actorFallback = profile?.role === 'admin' ? 'An admin' : 'A technician'
   const jobLabel = appt?.jobs?.title || appt?.jobs?.job_ref || 'a job'
   const label = APPOINTMENT_STATUS_META[status]?.label || status
 
   if (appt?.job_id) {
-    await logActivity(appt.job_id, 'technician_status_update', `${profile?.full_name || 'Technician'} set "${jobLabel}" to ${label}`).catch(() => {})
+    await logActivity(appt.job_id, 'technician_status_update', `${profile?.full_name || actorFallback} set "${jobLabel}" to ${label}`).catch(() => {})
     await notifyAdmins({
       title: `Job status: ${label}`,
-      body: `${profile?.full_name || 'A technician'} marked "${jobLabel}" as ${label}.`,
+      body: `${profile?.full_name || actorFallback} marked "${jobLabel}" as ${label}.`,
       link: `/jobs/${appt.job_id}`,
     }).catch(() => {})
   }

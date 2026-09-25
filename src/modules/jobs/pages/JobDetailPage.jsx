@@ -4,6 +4,7 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchJob, updateJob, deleteJob, fetchJobPhotos, uploadJobPhoto, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument, confirmJobComplete, fetchJobItems, updateJobItems } from '../services/jobService'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { fetchAppointmentsForJob, clockInAssignment, clockOutAssignment } from '../../planner/services/appointmentService'
+import { PENDING_RESPONSE_STATUSES } from '../../technician/services/technicianService'
 import AppointmentModal from '../../planner/components/AppointmentModal'
 import CompleteJobModal from '../components/CompleteJobModal'
 import { createInvoiceFromJob, findInvoiceForJob } from '../../finance/services/invoiceService'
@@ -615,7 +616,16 @@ export default function JobDetailPage() {
                                     </div>
                                   </div>
                                 </div>
-                                {!a.actual_start ? (
+                                {a.technician_id === currentProfile?.id ? (
+                                  // This assignment is the logged-in admin's own — send them through
+                                  // the exact same accept/attend/complete/sign-off flow a technician
+                                  // uses, scoped to just this appointment, rather than letting them
+                                  // toggle the shared status on behalf of everyone assigned.
+                                  <button type="button" onClick={() => navigate(`/my-jobs/${appt.id}`)}
+                                    className="bg-indigo-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-indigo-700 transition-colors">
+                                    {PENDING_RESPONSE_STATUSES.includes(appt.status) ? 'Accept / Decline' : 'Open My Job'}
+                                  </button>
+                                ) : !a.actual_start ? (
                                   <button type="button" onClick={() => handleClockIn(a.id)}
                                     className="bg-blue-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-blue-700 transition-colors">
                                     Clock In
@@ -643,6 +653,7 @@ export default function JobDetailPage() {
                                         className="text-xs text-blue-600 hover:text-blue-700 font-medium truncate text-left"
                                       >
                                         {m.full_name}
+                                        {m.is_casual && <span className="ml-1 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 align-middle">Casual</span>}
                                         {m.role_title && <span className="text-gray-400 font-normal"> · {m.role_title}</span>}
                                       </button>
                                       <span className="text-xs text-gray-400 shrink-0">

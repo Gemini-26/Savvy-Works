@@ -208,6 +208,7 @@ export default function ActiveTeamMembersPage({ activeOnly = true }) {
                           <Users size={14} />
                         </div>
                         <span className="font-medium text-gray-900 group-hover:text-blue-600">{m.full_name}</span>
+                        {m.is_casual && <span className="text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5">Casual</span>}
                       </button>
                     </td>
                     <td className="px-5 py-3 text-gray-600">{m.role_title || '—'}</td>

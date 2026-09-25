@@ -50,7 +50,7 @@ export async function fetchAppointmentsForJob(jobId) {
       appointment_assignments(
         id, technician_id, actual_start, actual_end,
         profiles(id, full_name, color),
-        assignment_team_members(team_members(id, full_name, role_title))
+        assignment_team_members(team_members(id, full_name, role_title, is_casual))
       )
     `)
     .eq('job_id', jobId)
