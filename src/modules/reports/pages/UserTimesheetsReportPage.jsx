@@ -3,8 +3,24 @@ import { Clock } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
-import { fetchActiveShiftsForCompany, fetchShiftHistoryForCompany, onWorkShiftChange } from '../../../shared/services/workShiftService'
+import { fetchActiveShiftsForCompany, fetchShiftHistoryForCompany, onWorkShiftChange, adjustShiftTimes } from '../../../shared/services/workShiftService'
 import { formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
+import ClockTimesModal from '../../../shared/components/ClockTimesModal'
+import { useCurrentUser } from '../../../hooks/useCurrentUser'
+
+// "Adjusted by X · originally 09:45 · reason" under an admin-corrected shift.
+function AdjustedNote({ shift }) {
+  if (!shift.times_adjusted_at) return null
+  const original = shift.original_clock_in
+    ? ` · originally in ${new Date(shift.original_clock_in).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}`
+    : ''
+  return (
+    <p className="text-xs text-amber-600">
+      Adjusted by {shift.times_adjusted_by_name || 'an admin'}{original}
+      {shift.adjustment_reason && <span className="text-gray-400"> · {shift.adjustment_reason}</span>}
+    </p>
+  )
+}
 
 function formatDuration(ms) {
   const totalMinutes = Math.round(ms / 60000)
@@ -22,6 +38,8 @@ export default function UserTimesheetsReportPage() {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [editing, setEditing] = useState(null)
+  const { isAdmin } = useCurrentUser()
 
   function reload() {
     return Promise.all([
@@ -87,6 +105,12 @@ export default function UserTimesheetsReportPage() {
                     <div className="text-right shrink-0 ml-3">
                       <p className="text-sm font-mono font-semibold text-emerald-700">{elapsedSince(s.clock_in)}</p>
                       <p className="text-xs text-gray-400">since {formatDateTime(s.clock_in)}</p>
+                      <AdjustedNote shift={s} />
+                      {isAdmin && (
+                        <button type="button" onClick={() => setEditing(s)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">
+                          Edit times
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -115,6 +139,12 @@ export default function UserTimesheetsReportPage() {
                             {s.clocked_out_by && s.clocked_out_by !== s.technician_id && (
                               <p className="text-xs text-amber-600">Clocked out by {s.clocked_out_by_profile?.full_name || 'admin'}</p>
                             )}
+                            <AdjustedNote shift={s} />
+                            {isAdmin && (
+                              <button type="button" onClick={() => setEditing(s)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">
+                                Edit times
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -125,6 +155,25 @@ export default function UserTimesheetsReportPage() {
             )}
           </div>
         </>
+      )}
+
+      {editing && (
+        <ClockTimesModal
+          title="Edit day shift"
+          personName={editing.profiles?.full_name}
+          startLabel="Clock in (started work)"
+          endLabel="Clock out (finished work)"
+          openLabel="Still clocked in"
+          start={editing.clock_in}
+          end={editing.clock_out}
+          originalStart={editing.original_clock_in}
+          originalEnd={editing.original_clock_out}
+          onSubmit={async ({ start, end, reason }) => {
+            await adjustShiftTimes(editing.id, { clock_in: start, clock_out: end }, reason)
+            await reload()
+          }}
+          onClose={() => setEditing(null)}
+        />
       )}
     </PageContainer>
   )

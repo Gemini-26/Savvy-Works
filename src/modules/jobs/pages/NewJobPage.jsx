@@ -152,6 +152,7 @@ export default function NewJobPage() {
     notes:            '',
     customer_id:       '',
     customer_type:     '',
+    customer_company:  '',
     contact_name:      '',
     contact_email:     '',
     contact_telephone: '+27-',
@@ -173,7 +174,7 @@ export default function NewJobPage() {
     if (!syncSite) return
     setForm(prev => ({
       ...prev,
-      site_company:        prev.contact_name,
+      site_company:        prev.customer_company,
       site_contact_name:   prev.contact_name,
       site_contact_email:  prev.contact_email,
       site_telephone:      prev.contact_telephone,
@@ -186,7 +187,7 @@ export default function NewJobPage() {
     }))
   }, [
     syncSite,
-    form.contact_name, form.contact_email, form.contact_telephone, form.contact_mobile,
+    form.customer_company, form.contact_name, form.contact_email, form.contact_telephone, form.contact_mobile,
     form.customer_address, form.customer_city, form.customer_county, form.customer_postcode, form.customer_country,
   ])
 
@@ -213,7 +214,7 @@ export default function NewJobPage() {
     setSavingCustomer(true)
     setCustomerError(null)
     try {
-      const { error } = await supabase
+      const { data: created, error } = await supabase
         .from('customers')
         .insert([{
           customer_name: newCustomer.customer_name,
@@ -240,10 +241,12 @@ export default function NewJobPage() {
           sage_ref:      newCustomer.sage_ref  || null,
           notes:         newCustomer.notes     || null,
         }])
+        .select('id')
       if (error) throw error
-      const { data: list } = await supabase.from('customers').select('id').eq('customer_name', newCustomer.customer_name).order('created_at', { ascending: false }).limit(1)
       await reloadCustomers()
-      if (list?.[0]) set('customer_id', list[0].id)
+      // Selecting it runs the customer-load effect, which fills the company
+      // and contact fields from what was just saved.
+      if (created?.[0]) set('customer_id', created[0].id)
       setShowAddCustomer(false)
       setNewCustomer(BLANK_NEW_CUSTOMER)
     } catch (err) {
@@ -253,42 +256,54 @@ export default function NewJobPage() {
     }
   }
 
+  // Load the chosen customer. Two different names come off it:
+  //   customer_name → the company (goes to site "Company")
+  //   contact_name  → the person   (goes to "Contact Name" here and on site)
+  // Many customers have no contact_name saved, so fall back to their first
+  // saved contact person, else leave it blank — never the company name.
   useEffect(() => {
     if (!form.customer_id) {
       setContacts([])
+      setForm(prev => ({ ...prev, customer_company: '' }))
       return
     }
 
-    // Fetch full customer record and populate contact fields
-    supabase
-      .from('customers')
-      .select('customer_name, email, telephone, mobile, customer_type, address, city, county, postcode, country')
-      .eq('id', form.customer_id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!data) return
-        setForm(prev => ({
-          ...prev,
-          contact_name:      data.customer_name ?? '',
-          contact_email:     data.email         ?? '',
-          contact_telephone: data.telephone ? `+27-${data.telephone}` : '+27-',
-          contact_mobile:    data.mobile    ? `+27-${data.mobile}`    : '+27-',
-          customer_type:     data.customer_type ?? '',
-          customer_address:  data.address   ?? '',
-          customer_city:     data.city      ?? '',
-          customer_county:   data.county    ?? '',
-          customer_postcode: data.postcode  ?? '',
-          customer_country:  data.country   ?? DEFAULT_COUNTRY,
-        }))
-      })
+    let stale = false
+    Promise.all([
+      supabase
+        .from('customers')
+        .select('customer_name, contact_name, email, telephone, mobile, customer_type, address, city, county, postcode, country')
+        .eq('id', form.customer_id)
+        .maybeSingle(),
+      supabase
+        .from('customer_contacts')
+        .select('id, first_name, last_name, email, telephone, mobile')
+        .eq('customer_id', form.customer_id),
+    ]).then(([{ data }, { data: contactList }]) => {
+      // Switching customer quickly must not let the older reply win.
+      if (stale || !data) return
+      setContacts(contactList || [])
 
-    // Fetch contacts linked to this customer
-    supabase
-      .from('customer_contacts')
-      .select('id, first_name, last_name, email, telephone, mobile')
-      .eq('customer_id', form.customer_id)
-      .then(({ data }) => { if (data) setContacts(data) })
+      const firstContact = !data.contact_name?.trim() ? (contactList || [])[0] : null
+      const phone = v => v ? `+27-${v}` : '+27-'
+      setForm(prev => ({
+        ...prev,
+        customer_company:  data.customer_name ?? '',
+        contact_name:      data.contact_name?.trim()
+                             || [firstContact?.first_name, firstContact?.last_name].filter(Boolean).join(' '),
+        contact_email:     data.email     || firstContact?.email     || '',
+        contact_telephone: phone(data.telephone || firstContact?.telephone),
+        contact_mobile:    phone(data.mobile    || firstContact?.mobile),
+        customer_type:     data.customer_type ?? '',
+        customer_address:  data.address   ?? '',
+        customer_city:     data.city      ?? '',
+        customer_county:   data.county    ?? '',
+        customer_postcode: data.postcode  ?? '',
+        customer_country:  data.country   ?? DEFAULT_COUNTRY,
+      }))
+    })
 
+    return () => { stale = true }
   }, [form.customer_id])
 
   function handleContactSelect(e) {
@@ -308,9 +323,9 @@ export default function NewJobPage() {
     setSaving(true)
     setError(null)
     try {
-      // customer_address/city/county/postcode/country only exist on the
-      // customers table — the jobs table only has site_* columns.
-      const { customer_address, customer_city, customer_county, customer_postcode, customer_country, ...jobForm } = form
+      // customer_company/address/city/county/postcode/country only exist on
+      // the customers table — the jobs table only has site_* columns.
+      const { customer_company, customer_address, customer_city, customer_county, customer_postcode, customer_country, ...jobForm } = form
       await createJob({
         ...jobForm,
         status:        form.status.toLowerCase().replace(/ /g, '_'),
@@ -420,10 +435,10 @@ export default function NewJobPage() {
                 </div>
               </Field>
 
-              <Field label="Name" required span>
+              <Field label="Contact Name" required span>
                 <input required value={form.contact_name}
                   onChange={e => set('contact_name', e.target.value)}
-                  placeholder="Full Name" className={inputCls} />
+                  placeholder="Contact person's full name" className={inputCls} />
               </Field>
 
               <Field label="Email" span>

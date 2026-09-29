@@ -6,7 +6,7 @@ const PAGE_SIZE = 50
 export async function fetchLeads(statusFilter, page = 0) {
   let query = supabase
     .from('leads')
-    .select('*, customers(customer_name)', { count: 'exact' })
+    .select('*, customers(customer_name), assignee:profiles!assigned_to(full_name)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 

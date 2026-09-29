@@ -3,22 +3,94 @@ import { getMyCompanyId, getCurrentProfile } from '../../../services/authService
 import { logActivity } from '../../../shared/services/activityService'
 import { notifyAdmins } from '../../../shared/services/notificationService'
 import { archiveRecord } from '../../../shared/services/archiveService'
+import { replaceLineItems } from '../../../shared/services/lineItemsService'
+import { JOB_ASSIGNEES_SELECT, jobAssignees, jobIdsForStaff, jobIdsForStaffNamed } from '../../../shared/utils/assignees'
+import { buildFilters, keywordGroups } from '../../../shared/utils/listFilters'
 
 const PAGE_SIZE = 50
 const PHOTO_BUCKET = 'job-photos'
 const DOCUMENT_BUCKET = 'job-documents'
 
-export async function fetchJobs(statusFilter, page = 0, search = '') {
+const ids = rows => [...new Set((rows ?? []).map(r => r.job_id).filter(Boolean))]
+
+async function jobIdsForAppointmentStatuses(statuses) {
+  const { data, error } = await supabase.from('appointments').select('job_id').in('status', statuses)
+  if (error) throw error
+  return ids(data)
+}
+
+async function jobIdsForAppointmentDates({ from, to }) {
+  let q = supabase.from('appointments').select('job_id')
+  if (from) q = q.gte('scheduled_start', new Date(`${from}T00:00:00`).toISOString())
+  if (to) {
+    const end = new Date(`${to}T00:00:00`)
+    end.setDate(end.getDate() + 1)
+    q = q.lt('scheduled_start', end.toISOString())
+  }
+  const { data, error } = await q
+  if (error) throw error
+  return ids(data)
+}
+
+// Everything the Keywords box and the search bar look through: every text
+// field on the job, plus its customer, assigned staff, linked quote / invoice /
+// PO refs, and its line items.
+const JOB_KEYWORDS = {
+  columns: [
+    'job_ref', 'title', 'description', 'status', 'priority', 'job_type', 'payment_type', 'customer_type',
+    'site_address', 'site_city', 'site_county', 'site_postcode', 'site_country', 'site_company',
+    'site_contact_name', 'site_contact_email', 'site_telephone', 'site_mobile', 'site_notes',
+    'contact_name', 'contact_email', 'contact_telephone', 'contact_mobile',
+    'customer_ref', 'customer_job_ref', 'po_ref', 'notes', 'completion_notes', 'materials_used',
+    'sign_off_name', 'sign_off_customer_name',
+  ],
+  related: [
+    { column: 'customer_id', lookup: ['customers', ['customer_name', 'email', 'telephone', 'mobile']] },
+    { column: 'id',          resolve: jobIdsForStaffNamed },
+    { column: 'quote_id',    lookup: ['quotes', ['quote_ref']] },
+    { column: 'id',          lookup: ['invoices', ['invoice_ref'], 'job_id'] },
+    { column: 'id',          lookup: ['purchase_orders', ['po_ref', 'supplier_name'], 'job_id'] },
+    { column: 'id',          lookup: ['job_items', ['description'], 'job_id'] },
+  ],
+}
+
+const JOB_FILTERS = {
+  jobRef:      { columns: ['job_ref'] },
+  customer:    { column: 'customer_id', lookup: ['customers', ['customer_name', 'email', 'telephone', 'mobile']] },
+  siteAddress: { columns: ['site_address', 'site_city', 'site_postcode', 'site_company'] },
+  title:       { columns: ['title'] },
+  quoteRef:    { column: 'quote_id', lookup: ['quotes', ['quote_ref']] },
+  invoiceRef:  { column: 'id', lookup: ['invoices', ['invoice_ref'], 'job_id'] },
+  poRef:       { column: 'id', lookup: ['purchase_orders', ['po_ref'], 'job_id'] },
+  customerRef: { columns: ['customer_ref', 'customer_job_ref', 'po_ref'] },
+  keywords:    { type: 'keywords', ...JOB_KEYWORDS },
+  description: { columns: ['description'] },
+  contact:     { columns: ['contact_name', 'contact_email', 'contact_telephone', 'contact_mobile', 'site_contact_name', 'site_telephone', 'site_mobile'] },
+  signOff:     { columns: ['sign_off_name', 'sign_off_customer_name'] },
+  jobType:     { column: 'job_type', type: 'multi' },
+  status:      { column: 'status', type: 'multi' },
+  priority:    { column: 'priority', type: 'multi' },
+  paymentType: { column: 'payment_type', type: 'multi' },
+  province:    { column: 'site_county', type: 'multi' },
+  technician:  { column: 'id', resolve: jobIdsForStaff },
+  appStatus:   { column: 'id', resolve: jobIdsForAppointmentStatuses },
+  appDate:     { column: 'id', resolve: jobIdsForAppointmentDates },
+  startDate:   { column: 'start_date', type: 'dateRange' },
+  completeBy:  { column: 'complete_by', type: 'dateRange' },
+  completedOn: { column: 'completed_at', type: 'dateRange', timestamp: true },
+  created:     { column: 'created_at', type: 'dateRange', timestamp: true },
+}
+
+export async function fetchJobs(statusFilter, page = 0, search = '', filters = {}) {
   let query = supabase
     .from('jobs')
-    .select('*, customers(customer_name)', { count: 'exact' })
+    .select(`*, customers(customer_name), ${JOB_ASSIGNEES_SELECT}`, { count: 'exact' })
     .is('archived_at', null)
     .order('created_at', { ascending: false })
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
-  if (search) {
-    query = query.or(`title.ilike.%${search}%,job_ref.ilike.%${search}%,site_address.ilike.%${search}%`)
-  }
+  const orGroups = []
+  orGroups.push(...await keywordGroups(search, JOB_KEYWORDS))
 
   if (statusFilter === 'active') {
     query = query.not('status', 'in', '(cancelled,invoiced,completed)')
@@ -28,14 +100,17 @@ export async function fetchJobs(statusFilter, page = 0, search = '') {
       .not('complete_by', 'is', null)
       .lt('complete_by', new Date().toISOString().slice(0, 10))
   } else if (statusFilter === 'action_required') {
-    query = query.or('status.eq.on_hold,and(status.in.(new,assigned),scheduled_for.is.null)')
+    orGroups.push('status.eq.on_hold,and(status.in.(new,assigned),scheduled_for.is.null)')
   } else if (statusFilter) {
     query = query.eq('status', statusFilter)
   }
 
+  const applyFilters = await buildFilters(JOB_FILTERS, filters)
+  query = applyFilters(query, orGroups)
+
   const { data, error, count } = await query
   if (error) throw error
-  return { data, count, page, pageSize: PAGE_SIZE }
+  return { data: (data ?? []).map(job => ({ ...job, assignees: jobAssignees(job) })), count, page, pageSize: PAGE_SIZE }
 }
 
 // Lightweight job lookup carrying the fields needed to raise + share an
@@ -120,6 +195,21 @@ export async function deleteJob(id) {
 
 // Technician-side completion — marks the job ready for admin sign-off,
 // NOT fully completed yet. Admin must confirmJobComplete() to finalize.
+// Signing a job off used to leave its visit on "On Site", so the Time
+// Planner and Today's Jobs showed finished work as still in progress.
+// Closes every visit on the job that has already started (scheduled up to
+// now) and isn't finished or in an issue state; future visits are untouched.
+const OPEN_VISIT_STATUSES = ['not_dispatched', 'awaiting', 'received', 'accepted', 'on_route', 'on_site']
+async function completeStartedVisits(jobId) {
+  const { error } = await supabase
+    .from('appointments')
+    .update({ status: 'completed' })
+    .eq('job_id', jobId)
+    .in('status', OPEN_VISIT_STATUSES)
+    .lte('scheduled_start', new Date().toISOString())
+  if (error) throw error
+}
+
 export async function completeJob(id, { completion_notes, materials_used, sign_off_name, sign_off_signature, sign_off_customer_name, payment_type }) {
   await updateJob(id, {
     status: 'pending_confirmation',
@@ -131,6 +221,9 @@ export async function completeJob(id, { completion_notes, materials_used, sign_o
     payment_type: payment_type || null,
     completed_at: new Date().toISOString(),
   })
+  // Non-fatal: the sign-off itself has saved; Today's Jobs also treats a
+  // signed-off job's visits as done if this ever fails.
+  await completeStartedVisits(id).catch(() => {})
 
   const profile = await getCurrentProfile().catch(() => null)
   await logActivity(id, 'job_completed_by_technician', `Marked complete by ${profile?.full_name || 'technician'}, signed off by ${sign_off_name}`).catch(() => {})
@@ -152,6 +245,7 @@ export async function confirmJobComplete(id) {
     confirmed_at: new Date().toISOString(),
     confirmed_by: profile?.id || null,
   })
+  await completeStartedVisits(id).catch(() => {})
   await logActivity(id, 'job_confirmed_complete', `Confirmed complete by ${profile?.full_name || 'admin'}`).catch(() => {})
 }
 
@@ -167,24 +261,7 @@ export async function fetchJobItems(jobId) {
 }
 
 export async function updateJobItems(jobId, items) {
-  const { error: delError } = await supabase.from('job_items').delete().eq('job_id', jobId)
-  if (delError) throw delError
-
-  if (items.length > 0) {
-    const rows = items.map((it, i) => ({
-      job_id: jobId,
-      item_id: it.item_id || null,
-      sort_order: i,
-      description: it.description,
-      quantity: it.quantity,
-      unit: it.unit,
-      unit_price: it.unit_price,
-      tax_rate: it.tax_rate,
-      line_total: Math.round((Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * 100) / 100,
-    }))
-    const { error: itemsError } = await supabase.from('job_items').insert(rows)
-    if (itemsError) throw itemsError
-  }
+  await replaceLineItems('job_items', 'job_id', jobId, items)
 }
 
 export async function fetchJobPhotos(jobId) {

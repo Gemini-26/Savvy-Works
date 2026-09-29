@@ -51,7 +51,8 @@ const NAV = [
     label: 'Jobs', icon: Briefcase, color: 'text-blue-600',
     children: [
       { label: 'Dashboard',          path: '/jobs/dashboard' },
-      { label: 'New Job',            path: '/jobs/new' },
+      { label: "Today's Jobs",       path: '/jobs/today' },
+      { label: 'New Job',           path: '/jobs/new' },
       { label: 'My Jobs',            path: '/my-jobs' },
       { label: 'Active Jobs',        path: '/jobs/active' },
       { label: 'Completed Jobs',     path: '/jobs/completed' },

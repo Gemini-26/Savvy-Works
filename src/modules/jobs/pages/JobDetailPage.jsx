@@ -7,6 +7,7 @@ import { fetchAppointmentsForJob, clockInAssignment, clockOutAssignment } from '
 import { PENDING_RESPONSE_STATUSES } from '../../technician/services/technicianService'
 import AppointmentModal from '../../planner/components/AppointmentModal'
 import CompleteJobModal from '../components/CompleteJobModal'
+import EditClockTimesModal from '../components/EditClockTimesModal'
 import { createInvoiceFromJob, findInvoiceForJob } from '../../finance/services/invoiceService'
 import { fetchJobActivity } from '../../../shared/services/activityService'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
@@ -119,6 +120,7 @@ export default function JobDetailPage() {
   const [apptLoading,   setApptLoading]   = useState(false)
   const [apptModal,     setApptModal]     = useState(false)
   const [editingAppt,   setEditingAppt]   = useState(null)
+  const [editingClock,  setEditingClock]  = useState(null)
   const [completeModal, setCompleteModal] = useState(false)
   const [invoicing,     setInvoicing]     = useState(false)
   const [existingInvoice, setExistingInvoice] = useState(null)
@@ -207,8 +209,10 @@ export default function JobDetailPage() {
     try {
       const data = await fetchAppointmentsForJob(id)
       setAppointments(data)
-    } catch (_) {
-      // silently fail — appointments tab will show empty
+    } catch (err) {
+      // Never fall through to "No appointments scheduled" — that hid a real
+      // failure once and made it look like the bookings had vanished.
+      setError(`Couldn't load appointments: ${err.message || 'unknown error'}`)
     } finally {
       setApptLoading(false)
     }
@@ -393,6 +397,7 @@ export default function JobDetailPage() {
         complete_by: form.complete_by  || null,
         scheduled_for: form.scheduled_for || null,
         customers:   undefined,
+        quote_ref:   undefined,
         completed_at: undefined,
       }, `Job details updated by ${currentProfile?.full_name || 'admin'}`)
       setEditing(false)
@@ -614,6 +619,18 @@ export default function JobDetailPage() {
                                       {a.actual_end && ` · Finished ${new Date(a.actual_end).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}`}
                                       {duration && (duration === 'In progress' ? ' · On site now' : ` · ${duration} on site`)}
                                     </div>
+                                    {a.times_adjusted_at && (
+                                      <div className="text-[11px] text-amber-600">
+                                        Adjusted by {a.times_adjusted_by_name || 'an admin'} · {new Date(a.times_adjusted_at).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}
+                                        {a.original_actual_start && ` · originally clocked in ${new Date(a.original_actual_start).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}`}
+                                      </div>
+                                    )}
+                                    {isAdmin && (
+                                      <button type="button" onClick={() => setEditingClock(a)}
+                                        className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">
+                                        {a.actual_start ? 'Edit clock times' : 'Enter clock times'}
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                                 {a.technician_id === currentProfile?.id ? (
@@ -1133,6 +1150,16 @@ export default function JobDetailPage() {
           appointment={editingAppt}
           presetJobId={id}
           onClose={() => setEditingAppt(null)}
+          onSaved={loadAppointments}
+        />
+      )}
+
+      {/* Admin correction of one person's on-site clock times */}
+      {editingClock && (
+        <EditClockTimesModal
+          assignment={editingClock}
+          crew={(editingClock.assignment_team_members || []).map(t => t.team_members).filter(Boolean)}
+          onClose={() => setEditingClock(null)}
           onSaved={loadAppointments}
         />
       )}

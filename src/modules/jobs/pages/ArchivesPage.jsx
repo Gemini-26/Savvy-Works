@@ -1,7 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
+import FilterBar from '../../../shared/components/FilterBar'
+import { matchesFilters, matchesWords } from '../../../shared/utils/listFilters'
 import { fetchArchive, restoreRecord } from '../../../shared/services/archiveService'
 import { formatDateTime } from '../../../shared/utils/formatDate'
 
@@ -16,6 +18,8 @@ export default function ArchivesPage() {
   const [expanded, setExpanded] = useState(null)
   const [restoringId, setRestoringId] = useState(null)
   const [confirmingId, setConfirmingId] = useState(null)
+  const [search, setSearch] = useState('')
+  const [filters, setFilters] = useState({})
 
   useEffect(() => {
     load()
@@ -28,6 +32,35 @@ export default function ArchivesPage() {
       .catch(err => setError(err.message || 'Failed to load archive'))
       .finally(() => setLoading(false))
   }
+
+  const filterFields = useMemo(() => {
+    const types = [...new Set(records.map(r => r.entity_type))]
+    const people = new Map(records.filter(r => r.archived_by).map(r => [r.archived_by, r.profiles?.full_name || 'Unknown']))
+    return [
+      { key: 'label',     label: 'Reference',   type: 'text', placeholder: 'Job ref or title' },
+      { key: 'reason',    label: 'Reason',      type: 'text', placeholder: 'Deletion reason' },
+      { key: 'keywords',  label: 'Keywords',    type: 'text', placeholder: 'Any words', hint: 'Searches every field of the deleted record — customer, address, notes…' },
+      { key: 'deleted',   label: 'Deleted On',  type: 'dateRange' },
+      { key: 'type',      label: 'Record Type', type: 'multi', options: types.map(t => ({ value: t, label: ENTITY_LABELS[t] || t })) },
+      { key: 'deletedBy', label: 'Deleted By',  type: 'multi', options: [...people].map(([value, label]) => ({ value, label })) },
+    ]
+  }, [records])
+
+  // Search covers the label, reason, who deleted it, and the archived record's
+  // own fields (job ref, customer, address…) from the snapshot.
+  const visible = useMemo(() => {
+    return records.filter(r => {
+      const haystack = [r.entity_label, r.reason, r.profiles?.full_name, ENTITY_LABELS[r.entity_type], JSON.stringify(r.data ?? {})].join(' ')
+      if (!matchesWords(haystack, search)) return false
+      return matchesFilters(r, filterFields, filters, (row, key) =>
+        key === 'type' ? row.entity_type
+        : key === 'deletedBy' ? row.archived_by
+        : key === 'label' ? row.entity_label
+        : key === 'reason' ? row.reason
+        : key === 'keywords' ? [row.entity_label, row.reason, row.profiles?.full_name, JSON.stringify(row.data ?? {})].join(' ')
+        : row.archived_at)
+    })
+  }, [records, search, filters, filterFields])
 
   async function handleRestore(record, e) {
     e.stopPropagation()
@@ -48,6 +81,15 @@ export default function ArchivesPage() {
     <PageContainer>
       <PageHeader title="Archives" subtitle="Records deleted from the app, with who deleted them and when" />
 
+      <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search job ref, title, customer, reason, deleted by…"
+        fields={filterFields}
+        values={filters}
+        onChange={setFilters}
+      />
+
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">
           {error}
@@ -58,9 +100,11 @@ export default function ArchivesPage() {
         <p className="text-sm text-gray-400">Loading archive…</p>
       ) : records.length === 0 ? (
         <EmptyState title="Nothing archived yet" description="Deleted records will show up here instead of being permanently lost." />
+      ) : visible.length === 0 ? (
+        <EmptyState title="No matches" description="No archived records match your search or filters." />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-50">
-          {records.map(r => (
+          {visible.map(r => (
             <div key={r.id} className="px-4 py-3">
               <div
                 className="flex items-center justify-between cursor-pointer"

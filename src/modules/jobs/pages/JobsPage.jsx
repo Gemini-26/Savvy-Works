@@ -1,10 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import PaginationBar from '../../../shared/components/PaginationBar'
-import SearchBar from '../../../shared/components/SearchBar'
+import FilterBar from '../../../shared/components/FilterBar'
+import AssigneesCell from '../../../shared/components/AssigneesCell'
+import useListFilters from '../../../shared/hooks/useListFilters'
+import { fetchStaffOptions, toOptions } from '../../../shared/utils/listFilters'
+import { JOB_TYPES } from '../../../shared/constants/jobTypes'
+import { SA_PROVINCES } from '../../../shared/constants/regions'
+import { PAYMENT_TYPES } from '../../../shared/constants/paymentTypes'
+import { APPOINTMENT_STATUS_META } from '../../../shared/constants/appointmentStatuses'
 import { fetchJobs } from '../services/jobService'
 
 const STATUS_COLORS = {
@@ -17,6 +24,13 @@ const STATUS_COLORS = {
   invoiced:    'bg-teal-100 text-teal-700',
   cancelled:   'bg-red-100 text-red-600',
 }
+
+const PRIORITIES = ['low', 'medium', 'high', 'urgent']
+const APP_STATUS_OPTIONS = Object.entries(APPOINTMENT_STATUS_META).map(([value, m]) => ({ value, label: m.label }))
+
+// Route-level filters that already pin one exact status — the Status filter
+// would be redundant there.
+const SINGLE_STATUS_ROUTES = ['unassigned', 'on_hold', 'completed']
 
 function StatusBadge({ status }) {
   const cls   = STATUS_COLORS[status] ?? 'bg-gray-100 text-gray-600'
@@ -37,27 +51,55 @@ export default function JobsPage({ statusFilter }) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
-  const [search,      setSearch]      = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const { search, setSearch, filters, setFilters, debouncedSearch, debouncedFilters, filterKey } = useListFilters()
+  const [staff, setStaff] = useState([])
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
+  useEffect(() => { fetchStaffOptions().then(setStaff).catch(() => {}) }, [])
 
   useEffect(() => {
     setJobs([])
     setTotal(0)
     setPage(0)
     load(0, true)
-  }, [location.key, statusFilter, debouncedSearch])
+  }, [location.key, statusFilter, debouncedSearch, filterKey])
+
+  const filterFields = useMemo(() => [
+    { key: 'jobRef',      label: 'Job Ref',      type: 'text', placeholder: 'Job ref' },
+    { key: 'customer',    label: 'Customer',     type: 'text', placeholder: 'Customer name, email or phone' },
+    { key: 'title',       label: 'Job Title',    type: 'text', placeholder: 'Job title' },
+    { key: 'siteAddress', label: 'Site Address', type: 'text', placeholder: 'Site address, city, postcode' },
+    { key: 'jobType',     label: 'Job Type',     type: 'multi', options: toOptions(JOB_TYPES) },
+    { key: 'quoteRef',    label: 'Quote Ref',    type: 'text', placeholder: 'Quote ref' },
+    { key: 'keywords',    label: 'Keywords',     type: 'text', placeholder: 'Any words', hint: 'Searches the title, description, notes, site notes, completion notes and materials used' },
+    { key: 'completeBy',  label: 'Complete By',  type: 'dateRange' },
+    { key: 'technician',  label: 'App. User',    type: 'multi', options: staff, hint: 'Staff assigned to any of the job’s appointments' },
+    { key: 'appStatus',   label: 'App. Status',  type: 'multi', options: APP_STATUS_OPTIONS },
+    { key: 'appDate',     label: 'App. Date',    type: 'dateRange', hint: 'Jobs with an appointment scheduled in this range' },
+    { key: 'priority',    label: 'Priority',     type: 'multi', options: toOptions(PRIORITIES) },
+    { key: 'invoiceRef',  label: 'Invoice #',    type: 'text', placeholder: 'Invoice number' },
+    { key: 'poRef',       label: 'PO Ref',       type: 'text', placeholder: 'Purchase order ref' },
+    { key: 'province',    label: 'Province',     type: 'multi', options: toOptions(SA_PROVINCES) },
+    ...(SINGLE_STATUS_ROUTES.includes(statusFilter) ? [] : [
+      { key: 'status',    label: 'Job Status',   type: 'multi', options: toOptions(Object.keys(STATUS_COLORS).concat('unassigned')) },
+    ]),
+    { key: 'customerRef', label: 'Customer Ref', type: 'text', placeholder: 'Customer’s ref / order no.', hint: 'Customer ref, customer job ref or customer PO number' },
+    { key: 'completedOn', label: 'Completed On', type: 'dateRange' },
+    { key: 'created',     label: 'Created On',   type: 'dateRange' },
+    { key: 'startDate',   label: 'Start Date',   type: 'dateRange' },
+    { key: 'description', label: 'Description',  type: 'text', placeholder: 'Words in the description', hint: 'Searches the job description only' },
+    { key: 'contact',     label: 'Contact',      type: 'text', placeholder: 'Contact name, email or phone' },
+    { key: 'signOff',     label: 'Signed Off By', type: 'text', placeholder: 'Sign-off name' },
+    { key: 'paymentType', label: 'Payment Type', type: 'multi', options: toOptions(PAYMENT_TYPES) },
+  ], [statusFilter, staff])
+
+  const filtering = !!debouncedSearch || filterKey !== '{}'
 
   async function load(pageNum, replace = false) {
     if (replace) setLoading(true)
     else setLoadingMore(true)
     setError(null)
     try {
-      const result = await fetchJobs(statusFilter, pageNum, debouncedSearch)
+      const result = await fetchJobs(statusFilter, pageNum, debouncedSearch, debouncedFilters)
       setTotal(result.count ?? 0)
       setJobs(prev => replace ? result.data : [...prev, ...result.data])
       setPage(pageNum)
@@ -93,9 +135,15 @@ export default function JobsPage({ statusFilter }) {
         </button>
       </div>
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search by job ref, title, or address…" />
-      </div>
+      <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search job ref, title, customer, address, PO…"
+        fields={filterFields}
+        values={filters}
+        onChange={setFilters}
+        defaultOpen={!statusFilter}
+      />
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">
@@ -108,7 +156,7 @@ export default function JobsPage({ statusFilter }) {
       ) : jobs.length === 0 ? (
         <EmptyState
           title="No jobs found"
-          description="Create your first job to start tracking field work."
+          description={filtering ? 'No jobs match your search or filters.' : 'Create your first job to start tracking field work.'}
         />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -118,6 +166,7 @@ export default function JobsPage({ statusFilter }) {
                 <th className="text-left px-5 py-3">Job Ref.</th>
                 <th className="text-left px-5 py-3">Title</th>
                 <th className="text-left px-5 py-3">Customer</th>
+                <th className="text-left px-5 py-3">Assigned To</th>
                 <th className="text-left px-5 py-3">Priority</th>
                 <th className="text-left px-5 py-3">Scheduled</th>
                 <th className="text-left px-5 py-3">Status</th>
@@ -133,6 +182,7 @@ export default function JobsPage({ statusFilter }) {
                   <td className="px-5 py-3 font-mono text-xs text-gray-500">{job.job_ref ?? '—'}</td>
                   <td className="px-5 py-3 font-medium text-gray-900">{job.title ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{job.customers?.customer_name ?? '—'}</td>
+                  <AssigneesCell names={job.assignees} />
                   <td className="px-5 py-3 capitalize text-gray-600">{job.priority ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">
                     {job.scheduled_for

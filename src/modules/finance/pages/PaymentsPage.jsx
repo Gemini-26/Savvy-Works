@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import PaginationBar from '../../../shared/components/PaginationBar'
-import SearchBar from '../../../shared/components/SearchBar'
+import FilterBar from '../../../shared/components/FilterBar'
+import useListFilters from '../../../shared/hooks/useListFilters'
 import { fetchPaymentTransactions } from '../services/invoiceService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
@@ -63,27 +64,21 @@ export default function PaymentsPage({ statusFilter }) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
-  const [search,      setSearch]      = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
+  const { search, setSearch, filters, setFilters, debouncedSearch, debouncedFilters, filterKey } = useListFilters()
 
   useEffect(() => {
     setPayments([])
     setTotal(0)
     setPage(0)
     load(0, true)
-  }, [location.key, statusFilter, debouncedSearch])
+  }, [location.key, statusFilter, debouncedSearch, filterKey])
 
   async function load(pageNum, replace = false) {
     if (replace) setLoading(true)
     else setLoadingMore(true)
     setError(null)
     try {
-      const result = await fetchPaymentTransactions(statusFilter, pageNum, debouncedSearch)
+      const result = await fetchPaymentTransactions(statusFilter, pageNum, debouncedSearch, debouncedFilters)
       setTotal(result.count ?? 0)
       setPayments(prev => replace ? result.data : [...prev, ...result.data])
       setPage(pageNum)
@@ -95,6 +90,20 @@ export default function PaymentsPage({ statusFilter }) {
     }
   }
 
+  const filterFields = useMemo(() => [
+    { key: 'invoiceRef', label: 'Invoice #',  type: 'text', placeholder: 'Invoice number or title' },
+    { key: 'customer',   label: 'Customer',   type: 'text', placeholder: 'Customer name, email or phone' },
+    { key: 'paymentId',  label: 'Payment ID', type: 'text', placeholder: 'PayFast m_payment_id' },
+    ...(statusFilter ? [] : [
+      { key: 'status', label: 'Status', type: 'multi', options: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label })) },
+    ]),
+    { key: 'created',    label: 'Link Created', type: 'dateRange' },
+    { key: 'resolved',   label: 'Resolved On',  type: 'dateRange', hint: 'When the payment was completed, failed or superseded' },
+    { key: 'amount',     label: 'Amount (R)',   type: 'numberRange' },
+  ], [statusFilter])
+
+  const filtering = !!debouncedSearch || filterKey !== '{}'
+
   const title    = TITLES[statusFilter] ?? 'All Payments'
   const subtitle = statusFilter ? `Payment transactions with status "${statusFilter}"` : 'Every PayFast payment link generated, across all invoices'
 
@@ -104,9 +113,14 @@ export default function PaymentsPage({ statusFilter }) {
         <PageHeader title={title} subtitle={subtitle} />
       </div>
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search by invoice #, customer, or payment ID…" />
-      </div>
+      <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search invoice #, invoice title, customer, payment ID…"
+        fields={filterFields}
+        values={filters}
+        onChange={setFilters}
+      />
 
       <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 text-blue-800 text-xs px-4 py-2.5 rounded-lg mb-4">
         <Info size={14} className="mt-0.5 shrink-0" />
@@ -128,7 +142,7 @@ export default function PaymentsPage({ statusFilter }) {
       ) : payments.length === 0 ? (
         <EmptyState
           title="No payments found"
-          description="Payment links generated from invoices will appear here."
+          description={filtering ? 'No payments match your search or filters.' : 'Payment links generated from invoices will appear here.'}
         />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

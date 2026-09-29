@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip } from 'lucide-react'
 import { fetchMyAppointment, respondToAppointment, updateAppointmentStatus, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
+import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
 import { APPOINTMENT_STATUS_META, TECH_UPDATABLE_STATUSES } from '../../../shared/constants/appointmentStatuses'
 import { fetchJobPhotos, uploadJobPhoto, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument } from '../../jobs/services/jobService'
 import { fetchAssignmentTeamMembers, setAssignmentTeamMembers } from '../../users/services/teamMembersService'
@@ -42,6 +43,11 @@ export default function JobDetailPage({ profile }) {
   }
 
   useEffect(() => { load() }, [id])
+  // Only the assignment itself, not photos/docs — enough to notice the visit
+  // was deleted or this technician taken off it while the page was open.
+  useRefreshOnFocus(() => {
+    fetchMyAppointment(id, profile.id).then(setAppt).catch(() => {})
+  })
 
   async function respond(status) {
     setBusy(true)
@@ -136,7 +142,7 @@ export default function JobDetailPage({ profile }) {
   }
 
   if (loading) return <div className="p-4 text-sm text-gray-500">Loading…</div>
-  if (!appt) return <div className="p-4 text-sm text-red-600">Job not found.</div>
+  if (!appt) return <div className="p-4 text-sm text-gray-600">This job is no longer assigned to you — it may have been removed or reassigned by the office.</div>
 
   const job = appt.jobs
   const statusMeta = APPOINTMENT_STATUS_META[appt.status]

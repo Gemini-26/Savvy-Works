@@ -16,14 +16,16 @@ export async function fetchMyAppointments(technicianId) {
       id, actual_start, actual_end,
       appointments(
         id, scheduled_start, scheduled_end, status, notes, job_id,
-        jobs(id, job_ref, title, priority, status, site_address, site_city, customers(customer_name, telephone, mobile))
+        jobs(id, job_ref, title, priority, status, archived_at, site_address, site_city, customers(customer_name, telephone, mobile))
       )
     `)
     .eq('technician_id', technicianId)
   if (error) throw error
 
   return (data || [])
-    .filter(row => row.appointments)
+    // A deleted job is archived, not removed, so its visits still exist —
+    // hide them from the technician (restoring the job brings them back).
+    .filter(row => row.appointments && !row.appointments.jobs?.archived_at)
     .map(row => ({
       assignmentId: row.id,
       actual_start: row.actual_start,
@@ -47,7 +49,7 @@ export async function fetchMyAppointment(appointmentId, technicianId) {
     .eq('technician_id', technicianId)
     .maybeSingle()
   if (error) throw error
-  if (!data) return null
+  if (!data?.appointments || data.appointments.jobs?.archived_at) return null
 
   return {
     assignmentId: data.id,

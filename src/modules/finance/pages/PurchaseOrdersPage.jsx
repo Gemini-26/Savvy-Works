@@ -1,9 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import PaginationBar from '../../../shared/components/PaginationBar'
+import FilterBar from '../../../shared/components/FilterBar'
+import AssigneesCell from '../../../shared/components/AssigneesCell'
+import useListFilters from '../../../shared/hooks/useListFilters'
+import { toOptions } from '../../../shared/utils/listFilters'
 import { fetchPurchaseOrders } from '../services/purchaseOrderService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
@@ -64,21 +68,21 @@ export default function PurchaseOrdersPage({ statusFilter }) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
-  const [methodFilter, setMethodFilter] = useState('')
+  const { search, setSearch, filters, setFilters, debouncedSearch, debouncedFilters, filterKey } = useListFilters()
 
   useEffect(() => {
     setPos([])
     setTotal(0)
     setPage(0)
     load(0, true)
-  }, [location.key, statusFilter, methodFilter])
+  }, [location.key, statusFilter, debouncedSearch, filterKey])
 
   async function load(pageNum, replace = false) {
     if (replace) setLoading(true)
     else setLoadingMore(true)
     setError(null)
     try {
-      const result = await fetchPurchaseOrders(statusFilter, pageNum, methodFilter)
+      const result = await fetchPurchaseOrders(statusFilter, pageNum, debouncedSearch, debouncedFilters)
       setTotal(result.count ?? 0)
       setPos(prev => replace ? result.data : [...prev, ...result.data])
       setPage(pageNum)
@@ -89,6 +93,26 @@ export default function PurchaseOrdersPage({ statusFilter }) {
       setLoadingMore(false)
     }
   }
+
+  const filterFields = useMemo(() => [
+    { key: 'poRef',            label: 'PO Ref',        type: 'text', placeholder: 'PO ref' },
+    { key: 'supplier',         label: 'Supplier',      type: 'text', placeholder: 'Supplier name' },
+    { key: 'title',            label: 'Title',         type: 'text', placeholder: 'PO title' },
+    { key: 'reference',        label: 'Reference',     type: 'text', placeholder: 'Supplier / order reference' },
+    { key: 'customer',         label: 'Customer',      type: 'text', placeholder: 'Customer name' },
+    { key: 'jobRef',           label: 'Job Ref',       type: 'text', placeholder: 'Job ref' },
+    { key: 'quoteRef',         label: 'Quote Ref',     type: 'text', placeholder: 'Quote ref' },
+    { key: 'invoiceRef',       label: 'Invoice #',     type: 'text', placeholder: 'Invoice number' },
+    { key: 'keywords',         label: 'Keywords',      type: 'text', placeholder: 'Any words', hint: 'Searches the title, notes, terms, delivery notes and supplier notes' },
+    ...(statusFilter ? [] : [{ key: 'status', label: 'Status', type: 'multi', options: toOptions(Object.keys(STATUS_COLORS)) }]),
+    { key: 'paymentMethod',    label: 'Payment Method', type: 'multi', options: [...toOptions(PAYMENT_METHODS), { value: 'none', label: 'Not recorded' }] },
+    { key: 'issued',           label: 'Issued On',     type: 'dateRange' },
+    { key: 'due',              label: 'Due Date',      type: 'dateRange' },
+    { key: 'expectedDelivery', label: 'Delivery',      type: 'dateRange', hint: 'Expected delivery date' },
+    { key: 'total',            label: 'Total (R)',     type: 'numberRange' },
+  ], [statusFilter])
+
+  const filtering = !!debouncedSearch || filterKey !== '{}'
 
   const title    = TITLES[statusFilter] ?? 'All Purchase Orders'
   const subtitle = statusFilter ? `Purchase orders with status "${statusFilter.replace(/_/g, ' ')}"` : 'All purchase orders'
@@ -105,17 +129,14 @@ export default function PurchaseOrdersPage({ statusFilter }) {
         </button>
       </div>
 
-      <div className="mb-4 flex items-center justify-end">
-        <select
-          value={methodFilter}
-          onChange={e => setMethodFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          <option value="">All Payment Methods</option>
-          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-          <option value="none">Not recorded</option>
-        </select>
-      </div>
+      <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search PO ref, title, supplier, reference…"
+        fields={filterFields}
+        values={filters}
+        onChange={setFilters}
+      />
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">
@@ -128,7 +149,7 @@ export default function PurchaseOrdersPage({ statusFilter }) {
       ) : pos.length === 0 ? (
         <EmptyState
           title="No purchase orders found"
-          description="Create your first purchase order to send to a supplier."
+          description={filtering ? 'No purchase orders match your search or filters.' : 'Create your first purchase order to send to a supplier.'}
         />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -138,6 +159,7 @@ export default function PurchaseOrdersPage({ statusFilter }) {
                 <th className="text-left px-5 py-3">PO Ref.</th>
                 <th className="text-left px-5 py-3">Title</th>
                 <th className="text-left px-5 py-3">Supplier</th>
+                <th className="text-left px-5 py-3">Assigned To</th>
                 <th className="text-left px-5 py-3">Issued</th>
                 <th className="text-left px-5 py-3">Due</th>
                 <th className="text-right px-5 py-3">Total</th>
@@ -155,6 +177,7 @@ export default function PurchaseOrdersPage({ statusFilter }) {
                   <td className="px-5 py-3 font-mono text-xs text-gray-500">{po.po_ref ?? '—'}</td>
                   <td className="px-5 py-3 font-medium text-gray-900">{po.title ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{po.supplier_name ?? '—'}</td>
+                  <AssigneesCell names={po.assignees} emptyLabel={po.job_id ? 'Unassigned' : null} />
                   <td className="px-5 py-3 text-gray-600">{formatDate(po.issue_date)}</td>
                   <td className="px-5 py-3 text-gray-600">{po.due_date ? formatDate(po.due_date) : '—'}</td>
                   <td className="px-5 py-3 text-right font-medium text-gray-900">{formatCurrency(po.total)}</td>

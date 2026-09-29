@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
 import {
@@ -13,7 +13,11 @@ const STATUSES = Object.entries(APPOINTMENT_STATUS_META).map(([value, meta]) => 
   value, label: meta.label,
 }))
 
-const inputCls = 'w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
+function localDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const inputCls ='w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 
 function Field({ label, required, children }) {
   return (
@@ -43,14 +47,16 @@ export default function AppointmentModal({
   const [error,    setError]    = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
-  const defaultDate  = presetDate || new Date().toISOString().split('T')[0]
+  // Local (SAST) date, not the UTC date toISOString() gives — between
+  // 00:00 and 02:00 that was still "yesterday".
+  const defaultDate  = presetDate || localDateStr(new Date())
   const defaultStart = `${String(presetStartHour).padStart(2, '0')}:00`
   const defaultEnd   = `${String(presetStartHour + 1).padStart(2, '0')}:00`
 
   const [form, setForm] = useState({
     job_id:         presetJobId || appointment?.job_id || '',
     date:           appointment
-      ? appointment.scheduled_start.split('T')[0]
+      ? localDateStr(new Date(appointment.scheduled_start))
       : defaultDate,
     start_time:     appointment
       ? new Date(appointment.scheduled_start).toTimeString().slice(0, 5)
@@ -75,7 +81,31 @@ export default function AppointmentModal({
       .then(({ data }) => { if (data) setJobs(data) })
   }, [])
 
+  // Booking from a job's page with no day picked: start from the job's own
+  // "Scheduled For" rather than today. Defaulting to today once put a
+  // visit for a job scheduled tomorrow onto today's planner.
+  const dateTouched = useRef(false)
+  useEffect(() => {
+    if (isEdit || presetDate || !presetJobId) return
+    let stale = false
+    supabase.from('jobs').select('scheduled_for').eq('id', presetJobId).maybeSingle()
+      .then(({ data }) => {
+        // Don't overwrite a date/time already picked while this loaded.
+        if (stale || dateTouched.current || !data?.scheduled_for) return
+        const when = new Date(data.scheduled_for)
+        const hh = when.getHours()
+        setForm(prev => ({
+          ...prev,
+          date:       localDateStr(when),
+          start_time: `${String(hh).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`,
+          end_time:   `${String(Math.min(hh + 1, 23)).padStart(2, '0')}:${String(when.getMinutes()).padStart(2, '0')}`,
+        }))
+      })
+    return () => { stale = true }
+  }, [isEdit, presetDate, presetJobId])
+
   function set(field, value) {
+    if (field === 'date' || field === 'start_time' || field === 'end_time') dateTouched.current = true
     setForm(prev => ({ ...prev, [field]: value }))
   }
 
@@ -114,6 +144,9 @@ export default function AppointmentModal({
       }
 
       if (isEdit) {
+        // Technicians first: it refuses to remove anyone already clocked in,
+        // and should do so before any other change on the form is saved.
+        await updateAppointmentTechnicians(appointment.id, form.technician_ids)
         await updateAppointment(appointment.id, {
           job_id: form.job_id || null,
           scheduled_start,
@@ -121,7 +154,6 @@ export default function AppointmentModal({
           status: form.status,
           notes:  form.notes,
         })
-        await updateAppointmentTechnicians(appointment.id, form.technician_ids)
       } else {
         await createAppointment(
           {

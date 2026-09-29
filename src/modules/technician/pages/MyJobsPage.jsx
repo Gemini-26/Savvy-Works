@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MapPin, Clock, ChevronRight, Briefcase, CheckCircle, XCircle, Ban } from 'lucide-react'
 import { fetchMyAppointments, respondToAppointment, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
+import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
 import { formatDate, formatTime } from '../../../shared/utils/formatDate'
 
 const STATUS_STYLES = {
@@ -126,6 +127,7 @@ export default function MyJobsPage({ profile, basePath = '/jobs' }) {
   }
 
   useEffect(() => { load() }, [profile.id])
+  useRefreshOnFocus(load)
 
   async function handleRespond(appointmentId, status) {
     await respondToAppointment(appointmentId, status)

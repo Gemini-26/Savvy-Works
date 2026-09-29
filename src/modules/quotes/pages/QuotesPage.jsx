@@ -1,11 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Eye, ArrowRightCircle } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import PaginationBar from '../../../shared/components/PaginationBar'
-import SearchBar from '../../../shared/components/SearchBar'
+import FilterBar from '../../../shared/components/FilterBar'
+import AssigneesCell from '../../../shared/components/AssigneesCell'
+import useListFilters from '../../../shared/hooks/useListFilters'
+import { fetchStaffOptions, toOptions } from '../../../shared/utils/listFilters'
+import { SA_PROVINCES } from '../../../shared/constants/regions'
 import QuotePreviewModal from '../components/QuotePreviewModal'
 import { fetchQuotes, convertQuoteToJob } from '../services/quoteService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
@@ -46,29 +50,26 @@ export default function QuotesPage({ statusFilter }) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
-  const [search,      setSearch]      = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const { search, setSearch, filters, setFilters, debouncedSearch, debouncedFilters, filterKey } = useListFilters()
+  const [staff, setStaff] = useState([])
   const [previewId,    setPreviewId]    = useState(null)
   const [convertingId, setConvertingId] = useState(null)
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
+  useEffect(() => { fetchStaffOptions().then(setStaff).catch(() => {}) }, [])
 
   useEffect(() => {
     setQuotes([])
     setTotal(0)
     setPage(0)
     load(0, true)
-  }, [location.key, statusFilter, debouncedSearch])
+  }, [location.key, statusFilter, debouncedSearch, filterKey])
 
   async function load(pageNum, replace = false) {
     if (replace) setLoading(true)
     else setLoadingMore(true)
     setError(null)
     try {
-      const result = await fetchQuotes(statusFilter, pageNum, debouncedSearch)
+      const result = await fetchQuotes(statusFilter, pageNum, debouncedSearch, debouncedFilters)
       setTotal(result.count ?? 0)
       setQuotes(prev => replace ? result.data : [...prev, ...result.data])
       setPage(pageNum)
@@ -79,6 +80,25 @@ export default function QuotesPage({ statusFilter }) {
       setLoadingMore(false)
     }
   }
+
+  const filterFields = useMemo(() => [
+    { key: 'quoteRef',    label: 'Quote Ref',    type: 'text', placeholder: 'Quote ref' },
+    { key: 'customer',    label: 'Customer',     type: 'text', placeholder: 'Customer name, email or phone' },
+    { key: 'title',       label: 'Title',        type: 'text', placeholder: 'Quote title' },
+    { key: 'siteAddress', label: 'Site Address', type: 'text', placeholder: 'Site address, city, postcode' },
+    { key: 'jobRef',      label: 'Job Ref',      type: 'text', placeholder: 'Converted job ref' },
+    { key: 'leadRef',     label: 'Lead Ref',     type: 'text', placeholder: 'Lead ref' },
+    { key: 'keywords',    label: 'Keywords',     type: 'text', placeholder: 'Any words', hint: 'Searches the title, notes and terms' },
+    { key: 'technician',  label: 'Assigned To',  type: 'multi', options: staff },
+    ...(statusFilter ? [] : [{ key: 'status', label: 'Status', type: 'multi', options: toOptions(Object.keys(STATUS_COLORS)) }]),
+    { key: 'province',    label: 'Province',     type: 'multi', options: toOptions(SA_PROVINCES) },
+    { key: 'issued',      label: 'Issued On',    type: 'dateRange' },
+    { key: 'validUntil',  label: 'Valid Until',  type: 'dateRange' },
+    { key: 'created',     label: 'Created On',   type: 'dateRange' },
+    { key: 'total',       label: 'Total (R)',    type: 'numberRange' },
+  ], [statusFilter, staff])
+
+  const filtering = !!debouncedSearch || filterKey !== '{}'
 
   const title    = TITLES[statusFilter] ?? 'All Quotes'
   const subtitle = statusFilter ? `Quotes with status "${statusFilter}"` : 'All customer quotes'
@@ -108,9 +128,15 @@ export default function QuotesPage({ statusFilter }) {
         </button>
       </div>
 
-      <div className="mb-4">
-        <SearchBar value={search} onChange={setSearch} placeholder="Search by quote ref or title…" />
-      </div>
+      <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search quote ref, title, customer, address…"
+        fields={filterFields}
+        values={filters}
+        onChange={setFilters}
+        defaultOpen={!statusFilter}
+      />
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">
@@ -123,7 +149,7 @@ export default function QuotesPage({ statusFilter }) {
       ) : quotes.length === 0 ? (
         <EmptyState
           title="No quotes found"
-          description="Create your first quote to send to a customer."
+          description={filtering ? 'No quotes match your search or filters.' : 'Create your first quote to send to a customer.'}
         />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -133,7 +159,7 @@ export default function QuotesPage({ statusFilter }) {
                 <th className="text-left px-5 py-3">Quote Ref.</th>
                 <th className="text-left px-5 py-3">Title</th>
                 <th className="text-left px-5 py-3">Customer</th>
-                <th className="text-left px-5 py-3">Technician</th>
+                <th className="text-left px-5 py-3">Assigned To</th>
                 <th className="text-left px-5 py-3">Issued</th>
                 <th className="text-left px-5 py-3">Valid Until</th>
                 <th className="text-right px-5 py-3">Total</th>
@@ -153,7 +179,7 @@ export default function QuotesPage({ statusFilter }) {
                     <td className="px-5 py-3 font-mono text-xs text-gray-500">{q.quote_ref ?? '—'}</td>
                     <td className="px-5 py-3 font-medium text-gray-900">{q.title ?? '—'}</td>
                     <td className="px-5 py-3 text-gray-600">{q.customers?.customer_name ?? '—'}</td>
-                    <td className="px-5 py-3 text-gray-600">{q.profiles?.full_name ?? '—'}</td>
+                    <AssigneesCell names={q.profiles?.full_name ? [q.profiles.full_name] : []} />
                     <td className="px-5 py-3 text-gray-600">{formatDate(q.issue_date)}</td>
                     <td className="px-5 py-3 text-gray-600">{formatDate(q.valid_until)}</td>
                     <td className="px-5 py-3 text-right font-medium text-gray-900">{formatCurrency(q.total)}</td>

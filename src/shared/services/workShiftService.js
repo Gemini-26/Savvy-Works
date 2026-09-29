@@ -49,6 +49,42 @@ export async function clockOutForWork(shiftId) {
   notifyWorkShiftChanged()
 }
 
+// Admin correction of a day shift (e.g. clocked in two hours after
+// starting work). The database trigger rejects this for non-admins and
+// keeps the original times plus who changed them. Leaving clock_out empty
+// keeps the shift open.
+export async function adjustShiftTimes(shiftId, { clock_in, clock_out }, reason = '') {
+  if (!clock_in) throw new Error('Clock-in time is required')
+  if (clock_out && new Date(clock_out) <= new Date(clock_in)) throw new Error('Clock-out must be after clock-in')
+  const now = Date.now() + 60_000
+  if (new Date(clock_in) > now || (clock_out && new Date(clock_out) > now)) {
+    throw new Error("Times can't be in the future")
+  }
+
+  const { data: current, error: fetchErr } = await supabase
+    .from('work_shifts').select('technician_id, clock_out').eq('id', shiftId).maybeSingle()
+  if (fetchErr) throw fetchErr
+  if (!current) throw new Error('Shift not found')
+
+  const updates = { clock_in, clock_out: clock_out || null, adjustment_reason: reason.trim() || null }
+  if (clock_out && !current.clock_out) {
+    // An admin closing someone's open shift here is the same as force-clocking them out.
+    const profile = await getCurrentProfile().catch(() => null)
+    updates.clocked_out_by = profile?.id || null
+  }
+  if (!clock_out && current.clock_out) {
+    // Reopening a finished shift — only if they don't already have one open.
+    const open = await fetchActiveShift(current.technician_id)
+    if (open) throw new Error('They already have an open shift — close that one first')
+    updates.clocked_out_by = null
+  }
+
+  const { data, error } = await supabase.from('work_shifts').update(updates).eq('id', shiftId).select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error('Update failed — no rows were changed. Check your permissions.')
+  notifyWorkShiftChanged()
+}
+
 // Called periodically from the browser (Geolocation API) while a shift is
 // open. Doesn't fire the workshift:changed event — this isn't a state
 // change other widgets need to react to, just a background position update.

@@ -32,6 +32,7 @@ import QuoteDetailPage from '../modules/quotes/pages/QuoteDetailPage'
 import QuotesDashboardPage from '../modules/quotes/pages/QuotesDashboardPage'
 import JobsDashboardPage from '../modules/jobs/pages/JobsDashboardPage'
 import ArchivesPage from '../modules/jobs/pages/ArchivesPage'
+import TodaysJobsPage from '../modules/jobs/pages/TodaysJobsPage'
 import FinanceDashboardPage from '../modules/finance/pages/FinanceDashboardPage'
 import NewInvoicePage from '../modules/finance/pages/NewInvoicePage'
 import InvoiceDetailPage from '../modules/finance/pages/InvoiceDetailPage'
@@ -95,7 +96,8 @@ export const moduleRoutes = [
 
   // ── Jobs ──────────────────────────────────────────────────────────────────
   { path: 'jobs/dashboard',       element: <JobsDashboardPage />,                            title: 'Jobs Dashboard' },
-  { path: 'jobs/new',             element: <NewJobPage />,                                   title: 'New Job' },
+  { path: 'jobs/today',           element: <TodaysJobsPage />,                               title: "Today's Jobs" },
+  { path: 'jobs/new',             element: <NewJobPage />,                                  title: 'New Job' },
   { path: 'jobs/active',          element: <JobsPage statusFilter="active" />,               title: 'Active Jobs' },
   { path: 'jobs/unassigned',      element: <JobsPage statusFilter="unassigned" />,           title: 'Unassigned Jobs' },
   { path: 'jobs/on-hold',         element: <JobsPage statusFilter="on_hold" />,              title: 'On Hold' },

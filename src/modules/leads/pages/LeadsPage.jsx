@@ -4,6 +4,7 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import PaginationBar from '../../../shared/components/PaginationBar'
+import AssigneesCell from '../../../shared/components/AssigneesCell'
 import { fetchLeads } from '../services/leadService'
 
 const STATUS_COLORS = {
@@ -86,6 +87,7 @@ export default function LeadsPage({ statusFilter }) {
                 <th className="text-left px-5 py-3">Full Name</th>
                 <th className="text-left px-5 py-3">Company</th>
                 <th className="text-left px-5 py-3">Telephone</th>
+                <th className="text-left px-5 py-3">Assigned To</th>
                 <th className="text-left px-5 py-3">Status</th>
                 <th className="text-left px-5 py-3">Source</th>
               </tr>
@@ -101,6 +103,7 @@ export default function LeadsPage({ statusFilter }) {
                   <td className="px-5 py-3 font-medium text-gray-900">{lead.full_name ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{lead.company_name ?? lead.customers?.customer_name ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{lead.telephone ?? '—'}</td>
+                  <AssigneesCell names={lead.assignee?.full_name ? [lead.assignee.full_name] : []} />
                   <td className="px-5 py-3">
                     <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold capitalize ${STATUS_COLORS[lead.status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {lead.status ?? '—'}

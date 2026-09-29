@@ -42,7 +42,12 @@ function assignLanes(appointments) {
 }
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
-function toDateStr(d) { return d.toISOString().split('T')[0] }
+// Local calendar date. toISOString() is UTC, so local midnight in SAST
+// (UTC+2) came out as the previous day — which made "<" jump back two days
+// and ">" not move at all.
+function toDateStr(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 function today()      { return toDateStr(new Date()) }
 function parseLocal(str) {
   const [y, m, d] = str.split('-').map(Number)

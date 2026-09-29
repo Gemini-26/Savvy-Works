@@ -1,10 +1,14 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import PaginationBar from '../../../shared/components/PaginationBar'
-import SearchBar from '../../../shared/components/SearchBar'
+import FilterBar from '../../../shared/components/FilterBar'
+import AssigneesCell from '../../../shared/components/AssigneesCell'
+import useListFilters from '../../../shared/hooks/useListFilters'
+import { toOptions } from '../../../shared/utils/listFilters'
+import { SA_PROVINCES } from '../../../shared/constants/regions'
 import { fetchInvoices } from '../services/invoiceService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
@@ -64,28 +68,21 @@ export default function InvoicesPage({ statusFilter }) {
   const [loadingMore, setLoadingMore] = useState(false)
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState(null)
-  const [search,      setSearch]      = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
-  const [methodFilter, setMethodFilter] = useState('')
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedSearch(search), 300)
-    return () => clearTimeout(t)
-  }, [search])
+  const { search, setSearch, filters, setFilters, debouncedSearch, debouncedFilters, filterKey } = useListFilters()
 
   useEffect(() => {
     setInvoices([])
     setTotal(0)
     setPage(0)
     load(0, true)
-  }, [location.key, statusFilter, debouncedSearch, methodFilter])
+  }, [location.key, statusFilter, debouncedSearch, filterKey])
 
   async function load(pageNum, replace = false) {
     if (replace) setLoading(true)
     else setLoadingMore(true)
     setError(null)
     try {
-      const result = await fetchInvoices(statusFilter, pageNum, debouncedSearch, methodFilter)
+      const result = await fetchInvoices(statusFilter, pageNum, debouncedSearch, debouncedFilters)
       setTotal(result.count ?? 0)
       setInvoices(prev => replace ? result.data : [...prev, ...result.data])
       setPage(pageNum)
@@ -96,6 +93,31 @@ export default function InvoicesPage({ statusFilter }) {
       setLoadingMore(false)
     }
   }
+
+  const filterFields = useMemo(() => [
+    { key: 'invoiceRef',  label: 'Invoice #',    type: 'text', placeholder: 'Invoice number' },
+    { key: 'customer',    label: 'Customer',     type: 'text', placeholder: 'Customer name, email or phone' },
+    { key: 'title',       label: 'Title',        type: 'text', placeholder: 'Invoice title' },
+    { key: 'siteAddress', label: 'Site Address', type: 'text', placeholder: 'Site address, city, postcode' },
+    { key: 'jobRef',      label: 'Job Ref',      type: 'text', placeholder: 'Job ref' },
+    { key: 'paymentRef',  label: 'PayFast Ref',  type: 'text', placeholder: 'PayFast payment ID' },
+    { key: 'keywords',    label: 'Keywords',     type: 'text', placeholder: 'Any words', hint: 'Searches the title, notes, terms and refund reason' },
+    ...(statusFilter && statusFilter !== 'outstanding' ? [] : [
+      { key: 'status', label: 'Status', type: 'multi', options: toOptions(Object.keys(STATUS_COLORS).filter(s => s !== 'outstanding')) },
+    ]),
+    { key: 'paymentMethod', label: 'Payment Method', type: 'multi', options: [
+      { value: 'PayFast', label: 'PayFast' },
+      ...toOptions(PAYMENT_METHODS),
+      { value: 'none', label: 'Not recorded' },
+    ] },
+    { key: 'province',    label: 'Province',     type: 'multi', options: toOptions(SA_PROVINCES) },
+    { key: 'issued',      label: 'Issued On',    type: 'dateRange' },
+    { key: 'due',         label: 'Due Date',     type: 'dateRange' },
+    { key: 'paid',        label: 'Paid On',      type: 'dateRange' },
+    { key: 'total',       label: 'Total (R)',    type: 'numberRange' },
+  ], [statusFilter])
+
+  const filtering = !!debouncedSearch || filterKey !== '{}'
 
   const title    = TITLES[statusFilter] ?? 'All Invoices'
   const subtitle = statusFilter ? `Invoices with status "${statusFilter}"` : 'All customer invoices'
@@ -112,21 +134,15 @@ export default function InvoicesPage({ statusFilter }) {
         </button>
       </div>
 
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex-1">
-          <SearchBar value={search} onChange={setSearch} placeholder="Search by invoice # or title…" />
-        </div>
-        <select
-          value={methodFilter}
-          onChange={e => setMethodFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-        >
-          <option value="">All Payment Methods</option>
-          <option value="PayFast">PayFast</option>
-          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
-          <option value="none">Not recorded</option>
-        </select>
-      </div>
+      <FilterBar
+        search={search}
+        onSearchChange={setSearch}
+        placeholder="Search invoice #, title, customer, address…"
+        fields={filterFields}
+        values={filters}
+        onChange={setFilters}
+        defaultOpen={!statusFilter}
+      />
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">
@@ -139,7 +155,7 @@ export default function InvoicesPage({ statusFilter }) {
       ) : invoices.length === 0 ? (
         <EmptyState
           title="No invoices found"
-          description="Create your first invoice, or complete a job to generate one automatically."
+          description={filtering ? 'No invoices match your search or filters.' : 'Create your first invoice, or complete a job to generate one automatically.'}
         />
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -149,6 +165,7 @@ export default function InvoicesPage({ statusFilter }) {
                 <th className="text-left px-5 py-3">Invoice #</th>
                 <th className="text-left px-5 py-3">Title</th>
                 <th className="text-left px-5 py-3">Customer</th>
+                <th className="text-left px-5 py-3">Assigned To</th>
                 <th className="text-left px-5 py-3">Issued</th>
                 <th className="text-left px-5 py-3">Due</th>
                 <th className="text-right px-5 py-3">Total</th>
@@ -166,6 +183,7 @@ export default function InvoicesPage({ statusFilter }) {
                   <td className="px-5 py-3 font-mono text-xs text-gray-500">{inv.invoice_ref ?? '—'}</td>
                   <td className="px-5 py-3 font-medium text-gray-900">{inv.title ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{inv.customers?.customer_name ?? '—'}</td>
+                  <AssigneesCell names={inv.assignees} emptyLabel={inv.job_id ? 'Unassigned' : null} />
                   <td className="px-5 py-3 text-gray-600">{formatDate(inv.issue_date)}</td>
                   <td className="px-5 py-3 text-gray-600">{formatDate(inv.due_date)}</td>
                   <td className="px-5 py-3 text-right font-medium text-gray-900">{formatCurrency(inv.total)}</td>

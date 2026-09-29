@@ -25,9 +25,12 @@ async function notifyNewAssignees(technicianIds, jobId) {
   ))
 }
 
+// Local-day window as real instants. Bare "YYYY-MM-DDT00:00:00" strings are
+// read as UTC, which made the planner's day run 02:00–01:59 SAST.
 export async function fetchAppointmentsForDay(dateStr) {
-  const start = `${dateStr}T00:00:00`
-  const end   = `${dateStr}T23:59:59`
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const start = new Date(y, m - 1, d).toISOString()
+  const end   = new Date(y, m - 1, d, 23, 59, 59, 999).toISOString()
   const { data, error } = await supabase
     .from('appointments')
     .select(`
@@ -48,7 +51,7 @@ export async function fetchAppointmentsForJob(jobId) {
     .select(`
       *,
       appointment_assignments(
-        id, technician_id, actual_start, actual_end,
+        *,
         profiles(id, full_name, color),
         assignment_team_members(team_members(id, full_name, role_title, is_casual))
       )
@@ -115,6 +118,59 @@ export async function clockOutAssignment(assignmentId) {
   await logClockEvent(assignmentId, 'clocked_out', 'clocked out on site')
 }
 
+function clockLabel(iso) {
+  return iso ? new Date(iso).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' }) : 'blank'
+}
+
+// Admin correction of someone's on-site clock (e.g. they tapped clock-in
+// two hours after reaching site). Team members riding this assignment are
+// paid off the same window, so their hours move with it. The database
+// trigger rejects this for non-admins and keeps the original times.
+export async function adjustAssignmentTimes(assignmentId, { actual_start, actual_end }, reason = '') {
+  if (actual_end && !actual_start) throw new Error('Set a clock-in time before a clock-out time')
+  if (actual_start && actual_end && new Date(actual_end) <= new Date(actual_start)) {
+    throw new Error('Clock-out must be after clock-in')
+  }
+  const now = Date.now() + 60_000
+  if ((actual_start && new Date(actual_start) > now) || (actual_end && new Date(actual_end) > now)) {
+    throw new Error("Times can't be in the future")
+  }
+
+  const { data: before, error: fetchErr } = await supabase
+    .from('appointment_assignments')
+    .select('actual_start, actual_end, profiles(full_name), appointments(job_id)')
+    .eq('id', assignmentId)
+    .maybeSingle()
+  if (fetchErr) throw fetchErr
+  if (!before) throw new Error('Clock-in record not found')
+
+  const { data, error } = await supabase
+    .from('appointment_assignments')
+    .update({ actual_start: actual_start || null, actual_end: actual_end || null })
+    .eq('id', assignmentId)
+    .select('id')
+  if (error) throw error
+  if (!data?.length) throw new Error('Update failed — no rows were changed. Check your permissions.')
+
+  const jobId = before.appointments?.job_id
+  if (jobId) {
+    const profile = await getCurrentProfile().catch(() => null)
+    const changes = []
+    if (!sameInstant(before.actual_start, actual_start)) changes.push(`clock-in ${clockLabel(before.actual_start)} → ${clockLabel(actual_start)}`)
+    if (!sameInstant(before.actual_end, actual_end)) changes.push(`clock-out ${clockLabel(before.actual_end)} → ${clockLabel(actual_end)}`)
+    if (changes.length) {
+      const who = before.profiles?.full_name || 'technician'
+      const note = reason.trim() ? ` (reason: ${reason.trim()})` : ''
+      await logActivity(jobId, 'clock_times_adjusted', `${profile?.full_name || 'Admin'} adjusted ${who}'s ${changes.join(', ')}${note}`).catch(() => {})
+    }
+  }
+}
+
+function sameInstant(a, b) {
+  if (!a || !b) return !a && !b
+  return new Date(a).getTime() === new Date(b).getTime()
+}
+
 export async function createAppointment(appt, technicianIds = []) {
   const { data, error } = await supabase
     .from('appointments')
@@ -149,27 +205,43 @@ export async function updateAppointment(id, updates) {
   if (!data || data.length === 0) throw new Error('Update failed.')
 }
 
+// Only touches what changed: removed technicians lose their assignment (so
+// the visit drops off their technician view), new ones are added, and
+// everyone kept keeps their clock-in times and on-site team members.
+// Deleting and re-inserting every row used to wipe those on each save.
 export async function updateAppointmentTechnicians(appointmentId, technicianIds) {
-  const { data: existing } = await supabase
+  const { data: existing, error: fetchErr } = await supabase
     .from('appointment_assignments')
-    .select('technician_id')
+    .select('id, technician_id, actual_start, profiles(full_name)')
     .eq('appointment_id', appointmentId)
+  if (fetchErr) throw fetchErr
   const priorIds = (existing || []).map(r => r.technician_id)
 
-  const { error: de } = await supabase
-    .from('appointment_assignments')
-    .delete()
-    .eq('appointment_id', appointmentId)
-  if (de) throw de
+  const removed = (existing || []).filter(r => !technicianIds.includes(r.technician_id))
+  // Their on-site clock is their pay record for this visit (and their
+  // helpers'), so removing them would silently delete worked hours.
+  const clockedIn = removed.filter(r => r.actual_start)
+  if (clockedIn.length > 0) {
+    const names = clockedIn.map(r => r.profiles?.full_name || 'A technician').join(', ')
+    throw new Error(`${names} already clocked in on this visit, so removing them would delete their worked hours. Leave them on it, or correct their clock times from the job's Appointments tab.`)
+  }
 
-  if (technicianIds.length > 0) {
-    const rows = technicianIds.map(tid => ({
-      appointment_id: appointmentId,
-      technician_id:  tid,
-    }))
+  if (removed.length > 0) {
+    const { error: de } = await supabase
+      .from('appointment_assignments')
+      .delete()
+      .in('id', removed.map(r => r.id))
+    if (de) throw de
+  }
+
+  const added = technicianIds.filter(tid => !priorIds.includes(tid))
+  if (added.length > 0) {
+    const rows = added.map(tid => ({ appointment_id: appointmentId, technician_id: tid }))
     const { error } = await supabase.from('appointment_assignments').insert(rows)
     if (error) throw error
   }
+
+  if (removed.length === 0 && added.length === 0) return
 
   const { data: appt } = await supabase.from('appointments').select('job_id').eq('id', appointmentId).maybeSingle()
   if (appt?.job_id) {
@@ -181,7 +253,22 @@ export async function updateAppointmentTechnicians(appointmentId, technicianIds)
   }
 }
 
+// Deleting cascades to every assignment, i.e. everyone's on-site clock for
+// this visit. Once someone has clocked in, cancelling keeps their hours and
+// still hides the visit from technicians.
 export async function deleteAppointment(id) {
-  const { error } = await supabase.from('appointments').delete().eq('id', id)
+  const { data: worked, error: fetchErr } = await supabase
+    .from('appointment_assignments')
+    .select('id, profiles(full_name)')
+    .eq('appointment_id', id)
+    .not('actual_start', 'is', null)
+  if (fetchErr) throw fetchErr
+  if (worked?.length) {
+    const names = worked.map(r => r.profiles?.full_name || 'A technician').join(', ')
+    throw new Error(`${names} already clocked in on this visit, so deleting it would delete their worked hours. Set its status to Cancelled instead — that hides it from technicians and keeps the hours.`)
+  }
+
+  const { data, error } = await supabase.from('appointments').delete().eq('id', id).select('id')
   if (error) throw error
+  if (!data?.length) throw new Error('Delete failed — the appointment was not removed. Check your permissions.')
 }

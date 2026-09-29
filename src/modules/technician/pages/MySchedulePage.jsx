@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Clock, CalendarDays, CalendarRange } from 'lucide-react'
 import { fetchMyAppointments } from '../services/technicianService'
+import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
 import { formatDate, formatTime, toDateStr } from '../../../shared/utils/formatDate'
 
 export default function MySchedulePage({ profile }) {
@@ -9,11 +10,15 @@ export default function MySchedulePage({ profile }) {
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    fetchMyAppointments(profile.id)
+  function load() {
+    return fetchMyAppointments(profile.id)
       .then(data => setAppointments(data.filter(a => a.status !== 'cancelled' && a.status !== 'declined')))
+      .catch(() => {})
       .finally(() => setLoading(false))
-  }, [profile.id])
+  }
+
+  useEffect(() => { load() }, [profile.id])
+  useRefreshOnFocus(load)
 
   if (loading) return <div className="p-4 text-sm text-gray-500">Loading…</div>
 

@@ -1,19 +1,56 @@
 import { supabase } from '../../../lib/supabase'
+import { lineItemRow } from '../../../shared/utils/lineItemRow'
+import { replaceLineItems } from '../../../shared/services/lineItemsService'
 import { nextInvoiceNumber } from '../../../shared/utils/generateDocumentNumber'
 import { getCurrentProfile } from '../../../services/authService'
+import { JOB_ASSIGNEES_SELECT, jobAssignees, jobIdsForStaffNamed } from '../../../shared/utils/assignees'
+import { customerIdsMatching, buildFilters, keywordGroups } from '../../../shared/utils/listFilters'
 
 const PAGE_SIZE = 50
 
-export async function fetchInvoices(statusFilter, page = 0, search = '', paymentMethodFilter = '') {
+// Everything the Keywords box and the search bar look through: every text
+// field on the invoice, plus its customer, linked job and that job's staff,
+// and its line items.
+const INVOICE_KEYWORDS = {
+  columns: [
+    'invoice_ref', 'invoice_number', 'title', 'status', 'payment_status', 'payment_method',
+    'site_address', 'site_city', 'site_county', 'site_postcode', 'notes', 'terms',
+    'payfast_payment_id', 'payfast_m_payment_id', 'refund_reason',
+  ],
+  related: [
+    { column: 'customer_id', lookup: ['customers', ['customer_name', 'email', 'telephone', 'mobile']] },
+    { column: 'job_id',      lookup: ['jobs', ['job_ref', 'title']] },
+    { column: 'job_id',      resolve: jobIdsForStaffNamed },
+    { column: 'id',          lookup: ['invoice_items', ['description'], 'invoice_id'] },
+  ],
+}
+
+const INVOICE_FILTERS = {
+  invoiceRef:    { columns: ['invoice_ref', 'invoice_number'] },
+  customer:      { column: 'customer_id', lookup: ['customers', ['customer_name', 'email', 'telephone', 'mobile']] },
+  title:         { columns: ['title'] },
+  siteAddress:   { columns: ['site_address', 'site_city', 'site_postcode'] },
+  jobRef:        { column: 'job_id', lookup: ['jobs', ['job_ref']] },
+  paymentRef:    { columns: ['payfast_payment_id', 'payfast_m_payment_id'] },
+  keywords:      { type: 'keywords', ...INVOICE_KEYWORDS },
+  status:        { column: 'status', type: 'multi' },
+  paymentMethod: { column: 'payment_method', type: 'multi' },
+  province:      { column: 'site_county', type: 'multi' },
+  issued:        { column: 'issue_date', type: 'dateRange' },
+  due:           { column: 'due_date', type: 'dateRange' },
+  paid:          { column: 'paid_at', type: 'dateRange', timestamp: true },
+  total:         { column: 'total', type: 'numberRange' },
+}
+
+export async function fetchInvoices(statusFilter, page = 0, search = '', filters = {}) {
   let query = supabase
     .from('invoices')
-    .select('*, customers(customer_name)', { count: 'exact' })
+    .select(`*, customers(customer_name), jobs(${JOB_ASSIGNEES_SELECT})`, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
-  if (search) {
-    query = query.or(`title.ilike.%${search}%,invoice_ref.ilike.%${search}%`)
-  }
+  const orGroups = []
+  orGroups.push(...await keywordGroups(search, INVOICE_KEYWORDS))
 
   if (statusFilter === 'outstanding') {
     query = query.not('status', 'in', '("cancelled","paid","draft")')
@@ -21,15 +58,12 @@ export async function fetchInvoices(statusFilter, page = 0, search = '', payment
     query = query.eq('status', statusFilter)
   }
 
-  if (paymentMethodFilter === 'none') {
-    query = query.is('payment_method', null)
-  } else if (paymentMethodFilter) {
-    query = query.eq('payment_method', paymentMethodFilter)
-  }
+  const applyFilters = await buildFilters(INVOICE_FILTERS, filters)
+  query = applyFilters(query, orGroups)
 
   const { data, error, count } = await query
   if (error) throw error
-  return { data, count, page, pageSize: PAGE_SIZE }
+  return { data: (data ?? []).map(inv => ({ ...inv, assignees: jobAssignees(inv.jobs) })), count, page, pageSize: PAGE_SIZE }
 }
 
 export async function createPayfastPayment(invoiceId) {
@@ -93,17 +127,7 @@ export function calculateTotals(items) {
 }
 
 function itemRows(invoiceId, items) {
-  return items.map((it, i) => ({
-    invoice_id: invoiceId,
-    item_id: it.item_id || null,
-    sort_order: i,
-    description: it.description,
-    quantity: it.quantity,
-    unit: it.unit,
-    unit_price: it.unit_price,
-    tax_rate: it.tax_rate,
-    line_total: Math.round((Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * 100) / 100,
-  }))
+  return items.map((it, i) => ({ invoice_id: invoiceId, ...lineItemRow(it, i) }))
 }
 
 export async function createInvoice(invoice, items) {
@@ -138,15 +162,7 @@ export async function updateInvoice(id, updates, items) {
   if (error) throw error
   if (!data || data.length === 0) throw new Error('Update failed — no rows were changed. Check your permissions.')
 
-  if (items) {
-    const { error: delError } = await supabase.from('invoice_items').delete().eq('invoice_id', id)
-    if (delError) throw delError
-
-    if (items.length > 0) {
-      const { error: itemsError } = await supabase.from('invoice_items').insert(itemRows(id, items))
-      if (itemsError) throw itemsError
-    }
-  }
+  if (items) await replaceLineItems('invoice_items', 'invoice_id', id, items)
 }
 
 export async function deleteInvoice(id) {
@@ -226,7 +242,35 @@ export async function createInvoiceFromJob(job) {
 
 // Global payment transactions list (admin view) — every PayFast payment link
 // ever generated, across all invoices, newest first.
-export async function fetchPaymentTransactions(statusFilter, page = 0, search = '') {
+async function invoiceIdsForCustomer(term) {
+  const customerIds = await customerIdsMatching(term)
+  if (!customerIds.length) return []
+  const { data, error } = await supabase.from('invoices').select('id').in('customer_id', customerIds)
+  if (error) throw error
+  return (data ?? []).map(i => i.id)
+}
+
+// Payment links match on their own PayFast id / status, or anything about the
+// invoice they belong to (ref, title, customer).
+const PAYMENT_KEYWORDS = {
+  columns: ['m_payment_id', 'status'],
+  related: [
+    { column: 'invoice_id', lookup: ['invoices', ['invoice_ref', 'title', 'payment_method']] },
+    { column: 'invoice_id', resolve: invoiceIdsForCustomer },
+  ],
+}
+
+const PAYMENT_FILTERS = {
+  invoiceRef: { column: 'invoice_id', lookup: ['invoices', ['invoice_ref', 'title']] },
+  customer:   { column: 'invoice_id', resolve: invoiceIdsForCustomer },
+  paymentId:  { columns: ['m_payment_id'] },
+  status:     { column: 'status', type: 'multi' },
+  created:    { column: 'created_at', type: 'dateRange', timestamp: true },
+  resolved:   { column: 'resolved_at', type: 'dateRange', timestamp: true },
+  amount:     { column: 'amount', type: 'numberRange' },
+}
+
+export async function fetchPaymentTransactions(statusFilter, page = 0, search = '', filters = {}) {
   let query = supabase
     .from('invoice_payment_attempts')
     .select('*, invoices(invoice_ref, title, customers(customer_name))', { count: 'exact' })
@@ -237,21 +281,15 @@ export async function fetchPaymentTransactions(statusFilter, page = 0, search = 
     query = query.eq('status', statusFilter)
   }
 
+  const orGroups = []
+  orGroups.push(...await keywordGroups(search, PAYMENT_KEYWORDS))
+
+  const applyFilters = await buildFilters(PAYMENT_FILTERS, filters)
+  query = applyFilters(query, orGroups)
+
   const { data, error, count } = await query
   if (error) throw error
-
-  let results = data
-  if (search) {
-    const term = search.toLowerCase()
-    results = results.filter(r =>
-      r.invoices?.invoice_ref?.toLowerCase().includes(term) ||
-      r.invoices?.title?.toLowerCase().includes(term) ||
-      r.invoices?.customers?.customer_name?.toLowerCase().includes(term) ||
-      r.m_payment_id?.toLowerCase().includes(term)
-    )
-  }
-
-  return { data: results, count, page, pageSize: PAGE_SIZE }
+  return { data, count, page, pageSize: PAGE_SIZE }
 }
 
 // Audit trail for a single invoice — who generated/sent payment links, and

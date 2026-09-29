@@ -1,28 +1,67 @@
 import { supabase } from '../../../lib/supabase'
+import { lineItemRow } from '../../../shared/utils/lineItemRow'
+import { replaceLineItems } from '../../../shared/services/lineItemsService'
+import { JOB_ASSIGNEES_SELECT, jobAssignees, jobIdsForStaffNamed } from '../../../shared/utils/assignees'
+import { buildFilters, keywordGroups } from '../../../shared/utils/listFilters'
 import { nextPurchaseOrderNumber } from '../../../shared/utils/generateDocumentNumber'
 
 const PAGE_SIZE = 50
 
-export async function fetchPurchaseOrders(statusFilter, page = 0, paymentMethodFilter = '') {
+// Everything the Keywords box and the search bar look through: every text
+// field on the PO, plus its customer, linked job / quote / invoice, the job's
+// staff, and its line items.
+const PO_KEYWORDS = {
+  columns: [
+    'po_ref', 'title', 'supplier_name', 'reference', 'status', 'payment_method',
+    'notes', 'terms', 'delivery_notes', 'supplier_notes',
+  ],
+  related: [
+    { column: 'customer_id', lookup: ['customers', ['customer_name']] },
+    { column: 'job_id',      lookup: ['jobs', ['job_ref', 'title']] },
+    { column: 'job_id',      resolve: jobIdsForStaffNamed },
+    { column: 'quote_id',    lookup: ['quotes', ['quote_ref']] },
+    { column: 'invoice_id',  lookup: ['invoices', ['invoice_ref']] },
+    { column: 'id',          lookup: ['purchase_order_items', ['description'], 'purchase_order_id'] },
+  ],
+}
+
+const PO_FILTERS = {
+  poRef:            { columns: ['po_ref'] },
+  supplier:         { columns: ['supplier_name'] },
+  title:            { columns: ['title'] },
+  reference:        { columns: ['reference'] },
+  customer:         { column: 'customer_id', lookup: ['customers', ['customer_name']] },
+  jobRef:           { column: 'job_id', lookup: ['jobs', ['job_ref']] },
+  quoteRef:         { column: 'quote_id', lookup: ['quotes', ['quote_ref']] },
+  invoiceRef:       { column: 'invoice_id', lookup: ['invoices', ['invoice_ref']] },
+  keywords:         { type: 'keywords', ...PO_KEYWORDS },
+  status:           { column: 'status', type: 'multi' },
+  paymentMethod:    { column: 'payment_method', type: 'multi' },
+  issued:           { column: 'issue_date', type: 'dateRange' },
+  due:              { column: 'due_date', type: 'dateRange' },
+  expectedDelivery: { column: 'expected_delivery_date', type: 'dateRange' },
+  total:            { column: 'total', type: 'numberRange' },
+}
+
+export async function fetchPurchaseOrders(statusFilter, page = 0, search = '', filters = {}) {
   let query = supabase
     .from('purchase_orders')
-    .select('*', { count: 'exact' })
+    .select(`*, jobs(${JOB_ASSIGNEES_SELECT})`, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+
+  const orGroups = await keywordGroups(search, PO_KEYWORDS)
 
   if (statusFilter) {
     query = query.eq('status', statusFilter)
   }
 
-  if (paymentMethodFilter === 'none') {
-    query = query.is('payment_method', null)
-  } else if (paymentMethodFilter) {
-    query = query.eq('payment_method', paymentMethodFilter)
-  }
+  const applyFilters = await buildFilters(PO_FILTERS, filters)
+  query = applyFilters(query, orGroups)
 
   const { data, error, count } = await query
   if (error) throw error
-  return { data, count, page, pageSize: PAGE_SIZE }
+  return { data: (data ?? []).map(po => ({ ...po, assignees: jobAssignees(po.jobs) })), count, page, pageSize: PAGE_SIZE }
 }
 
 export async function fetchPurchaseOrder(id) {
@@ -61,17 +100,7 @@ export function calculateTotals(items) {
 }
 
 function itemRows(purchaseOrderId, items) {
-  return items.map((it, i) => ({
-    purchase_order_id: purchaseOrderId,
-    item_id: it.item_id || null,
-    sort_order: i,
-    description: it.description,
-    quantity: it.quantity,
-    unit: it.unit,
-    unit_price: it.unit_price,
-    tax_rate: it.tax_rate,
-    line_total: Math.round((Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * 100) / 100,
-  }))
+  return items.map((it, i) => ({ purchase_order_id: purchaseOrderId, ...lineItemRow(it, i) }))
 }
 
 export async function createPurchaseOrder(po, items) {
@@ -106,15 +135,7 @@ export async function updatePurchaseOrder(id, updates, items) {
   if (error) throw error
   if (!data || data.length === 0) throw new Error('Update failed — no rows were changed. Check your permissions.')
 
-  if (items) {
-    const { error: delError } = await supabase.from('purchase_order_items').delete().eq('purchase_order_id', id)
-    if (delError) throw delError
-
-    if (items.length > 0) {
-      const { error: itemsError } = await supabase.from('purchase_order_items').insert(itemRows(id, items))
-      if (itemsError) throw itemsError
-    }
-  }
+  if (items) await replaceLineItems('purchase_order_items', 'purchase_order_id', id, items)
 }
 
 export async function deletePurchaseOrder(id) {

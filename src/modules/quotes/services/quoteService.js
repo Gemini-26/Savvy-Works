@@ -1,20 +1,58 @@
 import { supabase } from '../../../lib/supabase'
+import { lineItemRow } from '../../../shared/utils/lineItemRow'
+import { replaceLineItems } from '../../../shared/services/lineItemsService'
+import { buildFilters, keywordGroups } from '../../../shared/utils/listFilters'
 import { nextQuoteNumber, nextJobNumber } from '../../../shared/utils/generateDocumentNumber'
 
 const PAGE_SIZE = 50
 
-export async function fetchQuotes(statusFilter, page = 0, search = '') {
+// Everything the Keywords box and the search bar look through: every text
+// field on the quote, plus its customer, assigned person, linked job / lead,
+// and its line items.
+const QUOTE_KEYWORDS = {
+  columns: [
+    'quote_ref', 'quote_number', 'title', 'status',
+    'site_address', 'site_city', 'site_county', 'site_postcode', 'notes', 'terms',
+  ],
+  related: [
+    { column: 'customer_id', lookup: ['customers', ['customer_name', 'email', 'telephone', 'mobile']] },
+    { column: 'assigned_to', lookup: ['profiles', ['full_name']] },
+    { column: 'job_id',      lookup: ['jobs', ['job_ref', 'title']] },
+    { column: 'lead_id',     lookup: ['leads', ['lead_ref', 'full_name', 'company_name']] },
+    { column: 'id',          lookup: ['quote_items', ['description'], 'quote_id'] },
+  ],
+}
+
+const QUOTE_FILTERS = {
+  quoteRef:    { columns: ['quote_ref', 'quote_number'] },
+  customer:    { column: 'customer_id', lookup: ['customers', ['customer_name', 'email', 'telephone', 'mobile']] },
+  title:       { columns: ['title'] },
+  siteAddress: { columns: ['site_address', 'site_city', 'site_postcode'] },
+  jobRef:      { column: 'job_id', lookup: ['jobs', ['job_ref']] },
+  leadRef:     { column: 'lead_id', lookup: ['leads', ['lead_ref']] },
+  keywords:    { type: 'keywords', ...QUOTE_KEYWORDS },
+  status:      { column: 'status', type: 'multi' },
+  technician:  { column: 'assigned_to', type: 'multi' },
+  province:    { column: 'site_county', type: 'multi' },
+  issued:      { column: 'issue_date', type: 'dateRange' },
+  validUntil:  { column: 'valid_until', type: 'dateRange' },
+  created:     { column: 'created_at', type: 'dateRange', timestamp: true },
+  total:       { column: 'total', type: 'numberRange' },
+}
+
+export async function fetchQuotes(statusFilter, page = 0, search = '', filters = {}) {
   let query = supabase
     .from('quotes')
     .select('*, customers(customer_name), profiles(full_name)', { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
-  if (search) {
-    query = query.or(`title.ilike.%${search}%,quote_ref.ilike.%${search}%`)
-  }
+  const orGroups = []
+  orGroups.push(...await keywordGroups(search, QUOTE_KEYWORDS))
 
   if (statusFilter) query = query.eq('status', statusFilter)
+  const applyFilters = await buildFilters(QUOTE_FILTERS, filters)
+  query = applyFilters(query, orGroups)
 
   const { data, error, count } = await query
   if (error) throw error
@@ -63,17 +101,7 @@ export async function createQuote(quote, items) {
   const newQuote = data[0]
 
   if (items.length > 0) {
-    const rows = items.map((it, i) => ({
-      quote_id: newQuote.id,
-      item_id: it.item_id || null,
-      sort_order: i,
-      description: it.description,
-      quantity: it.quantity,
-      unit: it.unit,
-      unit_price: it.unit_price,
-      tax_rate: it.tax_rate,
-      line_total: Math.round((Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * 100) / 100,
-    }))
+    const rows = items.map((it, i) => ({ quote_id: newQuote.id, ...lineItemRow(it, i) }))
     const { error: itemsError } = await supabase.from('quote_items').insert(rows)
     if (itemsError) throw itemsError
   }
@@ -93,26 +121,7 @@ export async function updateQuote(id, updates, items) {
   if (error) throw error
   if (!data || data.length === 0) throw new Error('Update failed — no rows were changed. Check your permissions.')
 
-  if (items) {
-    const { error: delError } = await supabase.from('quote_items').delete().eq('quote_id', id)
-    if (delError) throw delError
-
-    if (items.length > 0) {
-      const rows = items.map((it, i) => ({
-        quote_id: id,
-        item_id: it.item_id || null,
-        sort_order: i,
-        description: it.description,
-        quantity: it.quantity,
-        unit: it.unit,
-        unit_price: it.unit_price,
-        tax_rate: it.tax_rate,
-        line_total: Math.round((Number(it.quantity) || 0) * (Number(it.unit_price) || 0) * 100) / 100,
-      }))
-      const { error: itemsError } = await supabase.from('quote_items').insert(rows)
-      if (itemsError) throw itemsError
-    }
-  }
+  if (items) await replaceLineItems('quote_items', 'quote_id', id, items)
 }
 
 export async function deleteQuote(id) {
