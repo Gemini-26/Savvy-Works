@@ -6,6 +6,7 @@ import { CUSTOMER_TYPE_LABELS as BASE_CUSTOMER_TYPES } from '../../../shared/con
 import { CURRENCIES, DEFAULT_CURRENCY } from '../../../shared/constants/currencies'
 import { COUNTRIES, DEFAULT_COUNTRY } from '../../../shared/constants/countries'
 import { GAUTENG_REGIONS, SA_PROVINCES } from '../../../shared/constants/regions'
+import { normalizePhone } from '../../../shared/utils/phone'
 
 const STATUSES       = ['Active', 'Inactive']
 const DISCOUNT_TYPES = ['Percentage', 'Fixed Amount']
@@ -122,9 +123,9 @@ export default function NewCustomerPage() {
     set('region', trimmed)
   }
 
+  // Saved in full ("+27-821234567") so the country code isn't lost.
   function phoneVal(raw) {
-    const dash = raw.indexOf('-')
-    return dash !== -1 ? raw.slice(dash + 1) : raw
+    return normalizePhone(raw)
   }
 
   async function handleSubmit(e) {

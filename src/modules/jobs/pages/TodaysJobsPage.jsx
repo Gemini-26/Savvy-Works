@@ -13,6 +13,7 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import FilterBar from '../../../shared/components/FilterBar'
 import { isFilterActive, matchesFilters, matchesWords, toOptions } from '../../../shared/utils/listFilters'
 import { APPOINTMENT_STATUS_META } from '../../../shared/constants/appointmentStatuses'
+import { formatSiteAddress } from '../../../shared/utils/siteAddress'
 
 // Every appointment status rolls up into one of these buckets so each
 // technician's day reads as done / underway / still to do / hit a snag.
@@ -549,6 +550,11 @@ export default function TodaysJobsPage() {
                                     {appt.jobs?.title ?? 'Untitled job'}
                                   </Link>
                                   <span className="text-gray-500 text-xs">{appt.jobs?.customers?.customer_name ?? ''}</span>
+                                  {formatSiteAddress(appt.jobs) && (
+                                    <span className="text-gray-500 text-xs truncate max-w-[16rem]" title={formatSiteAddress(appt.jobs)}>
+                                      {formatSiteAddress(appt.jobs)}
+                                    </span>
+                                  )}
                                   <StatusPill status={appt.status} />
                                   <span className="text-xs text-gray-400 tabular-nums">
                                     {asg.actual_start ? `On site ${formatTime(asg.actual_start)}${asg.actual_end ? `–${formatTime(asg.actual_end)}` : ' (now)'}` : 'Not clocked in'}

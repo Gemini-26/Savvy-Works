@@ -6,6 +6,7 @@ import FilterBar from '../../../shared/components/FilterBar'
 import { matchesFilters, matchesWords } from '../../../shared/utils/listFilters'
 import { fetchArchive, restoreRecord } from '../../../shared/services/archiveService'
 import { formatDateTime } from '../../../shared/utils/formatDate'
+import { formatSiteAddress } from '../../../shared/utils/siteAddress'
 
 const ENTITY_LABELS = {
   job: 'Job',
@@ -119,6 +120,11 @@ export default function ArchivesPage() {
                       {r.entity_label || r.entity_id}
                     </span>
                   </div>
+                  {r.entity_type === 'job' && formatSiteAddress(r.data) && (
+                    <p className="text-xs text-gray-600 mt-0.5 truncate" title={formatSiteAddress(r.data, { full: true })}>
+                      {formatSiteAddress(r.data)}
+                    </p>
+                  )}
                   <p className="text-xs text-gray-500 mt-0.5">
                     Deleted {formatDateTime(r.archived_at)} by {r.profiles?.full_name || 'Unknown'}
                     {r.reason ? ` — ${r.reason}` : ''}

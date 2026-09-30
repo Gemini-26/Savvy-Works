@@ -31,12 +31,33 @@ export async function fetchItem(id) {
   return data
 }
 
+// Returns the new row so callers (e.g. the "+" on a line item) can select it.
 export async function createItem(item) {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('items')
     .insert([item])
+    .select()
+    .single()
 
   if (error) throw error
+  return data
+}
+
+// The whole active catalogue for line-item pickers. fetchItems is paged at
+// 50, which would silently drop items from the dropdown past the 50th.
+export async function fetchCatalogue() {
+  const all = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await supabase
+      .from('items')
+      .select('*')
+      .eq('active', true)
+      .order('name')
+      .range(from, from + 999)
+    if (error) throw error
+    all.push(...(data || []))
+    if (!data || data.length < 1000) return all
+  }
 }
 
 export async function updateItem(id, updates) {

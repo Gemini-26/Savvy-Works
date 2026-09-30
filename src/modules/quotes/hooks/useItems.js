@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { fetchItems } from '../../items/services/itemService'
+import { fetchCatalogue } from '../../items/services/itemService'
 
 export function useItems() {
   const [items,   setItems]   = useState([])
@@ -7,8 +7,7 @@ export function useItems() {
 
   async function load() {
     try {
-      const { data } = await fetchItems({ activeOnly: true }, 0)
-      setItems(data || [])
+      setItems(await fetchCatalogue())
     } finally {
       setLoading(false)
     }

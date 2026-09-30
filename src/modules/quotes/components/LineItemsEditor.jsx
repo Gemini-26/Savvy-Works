@@ -1,8 +1,36 @@
+import { useState } from 'react'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
+import NewCatalogueItemModal from '../../items/components/NewCatalogueItemModal'
 
 const inputCls = 'w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white'
 
-export default function LineItemsEditor({ items, catalogue, onChange }) {
+// A catalogue item's fields as they go onto a line.
+function fromCatalogue(catItem) {
+  return {
+    item_id: catItem.id,
+    description: catItem.name,
+    unit: catItem.unit,
+    unit_price: catItem.sell_price,
+    tax_rate: catItem.tax_rate,
+  }
+}
+
+// `onCatalogueItemCreated` (optional) turns on the "+" buttons for adding a
+// new catalogue item inline; it's called with the saved item so the parent
+// can reload its catalogue list.
+export default function LineItemsEditor({ items, catalogue, onChange, onCatalogueItemCreated }) {
+  // Row index the new item goes onto, or 'new' for a fresh line.
+  const [addingFor, setAddingFor] = useState(null)
+
+  async function handleCatalogueItemCreated(catItem) {
+    if (addingFor === 'new') {
+      onChange([...items, { quantity: 1, ...fromCatalogue(catItem) }])
+    } else {
+      onChange(items.map((it, idx) => idx === addingFor ? { ...it, ...fromCatalogue(catItem) } : it))
+    }
+    await onCatalogueItemCreated?.(catItem)
+  }
+
   function addRow() {
     onChange([...items, { item_id: '', description: '', quantity: 1, unit: 'each', unit_price: 0, tax_rate: 15 }])
   }
@@ -29,15 +57,7 @@ export default function LineItemsEditor({ items, catalogue, onChange }) {
       updateRow(i, 'item_id', '')
       return
     }
-    const next = items.map((it, idx) => idx === i ? {
-      ...it,
-      item_id: itemId,
-      description: catItem.name,
-      unit: catItem.unit,
-      unit_price: catItem.sell_price,
-      tax_rate: catItem.tax_rate,
-    } : it)
-    onChange(next)
+    onChange(items.map((it, idx) => idx === i ? { ...it, ...fromCatalogue(catItem) } : it))
   }
 
   const subtotal = items.reduce((s, it) => s + (Number(it.quantity) || 0) * (Number(it.unit_price) || 0), 0)
@@ -48,10 +68,18 @@ export default function LineItemsEditor({ items, catalogue, onChange }) {
     <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
       <div className="flex items-center justify-between border-b border-gray-100 pb-2">
         <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wider">Line Items</h2>
-        <button type="button" onClick={addRow}
-          className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1 rounded transition-colors">
-          + Add Line
-        </button>
+        <div className="flex gap-2">
+          {onCatalogueItemCreated && (
+            <button type="button" onClick={() => setAddingFor('new')}
+              className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1 rounded transition-colors">
+              + New Catalogue Item
+            </button>
+          )}
+          <button type="button" onClick={addRow}
+            className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1 rounded transition-colors">
+            + Add Line
+          </button>
+        </div>
       </div>
 
       {items.length === 0 ? (
@@ -76,10 +104,19 @@ export default function LineItemsEditor({ items, catalogue, onChange }) {
               return (
                 <tr key={i} className="border-t border-gray-50">
                   <td className="py-1.5 pr-2">
-                    <select value={it.item_id || ''} onChange={e => selectCatalogueItem(i, e.target.value)} className={inputCls}>
-                      <option value="">— Custom line —</option>
-                      {catalogue.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                    </select>
+                    <div className="flex gap-1">
+                      <select value={it.item_id || ''} onChange={e => selectCatalogueItem(i, e.target.value)} className={inputCls}>
+                        <option value="">— Custom line —</option>
+                        {catalogue.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </select>
+                      {onCatalogueItemCreated && (
+                        <button type="button" onClick={() => setAddingFor(i)} title="Add a new catalogue item"
+                          aria-label="Add a new catalogue item"
+                          className="flex-none w-8 flex items-center justify-center rounded border border-blue-400 bg-blue-50 text-blue-600 hover:bg-blue-100 font-bold">
+                          +
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td className="py-1.5 pr-2">
                     <input value={it.description} onChange={e => updateRow(i, 'description', e.target.value)}
@@ -124,6 +161,15 @@ export default function LineItemsEditor({ items, catalogue, onChange }) {
           </div>
         </div>
       </div>
+
+      {addingFor !== null && (
+        <NewCatalogueItemModal
+          // Whatever was already typed as the line's description is a good start for the name.
+          initialName={addingFor === 'new' ? '' : (items[addingFor]?.item_id ? '' : items[addingFor]?.description || '')}
+          onCreated={handleCatalogueItemCreated}
+          onClose={() => setAddingFor(null)}
+        />
+      )}
     </div>
   )
 }

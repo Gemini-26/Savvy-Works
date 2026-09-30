@@ -8,6 +8,7 @@ import { PENDING_RESPONSE_STATUSES } from '../../technician/services/technicianS
 import AppointmentModal from '../../planner/components/AppointmentModal'
 import CompleteJobModal from '../components/CompleteJobModal'
 import EditClockTimesModal from '../components/EditClockTimesModal'
+import { normalizePhone } from '../../../shared/utils/phone'
 import { createInvoiceFromJob, findInvoiceForJob } from '../../finance/services/invoiceService'
 import { fetchJobActivity } from '../../../shared/services/activityService'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
@@ -105,7 +106,7 @@ export default function JobDetailPage() {
 
   const { customers } = useCustomers()
   const { profile: currentProfile, isAdmin } = useCurrentUser()
-  const { items: catalogue } = useItems()
+  const { items: catalogue, reload: reloadCatalogue } = useItems()
   const { profiles } = useProfiles()
 
   const [editing,       setEditing]       = useState(false)
@@ -396,6 +397,10 @@ export default function JobDetailPage() {
         start_date:  form.start_date   || null,
         complete_by: form.complete_by  || null,
         scheduled_for: form.scheduled_for || null,
+        contact_telephone: normalizePhone(form.contact_telephone) || null,
+        contact_mobile:    normalizePhone(form.contact_mobile)    || null,
+        site_telephone:    normalizePhone(form.site_telephone)    || null,
+        site_mobile:       normalizePhone(form.site_mobile)       || null,
         customers:   undefined,
         quote_ref:   undefined,
         completed_at: undefined,
@@ -523,7 +528,8 @@ export default function JobDetailPage() {
             <p className="text-sm text-gray-400">Loading materials…</p>
           ) : (
             <>
-              <LineItemsEditor items={jobItems} catalogue={catalogue} onChange={handleJobItemsChange} />
+              <LineItemsEditor items={jobItems} catalogue={catalogue} onChange={handleJobItemsChange}
+                onCatalogueItemCreated={reloadCatalogue} />
               <div className="flex justify-end mt-4">
                 <button type="button" onClick={handleSaveJobItems} disabled={!itemsDirty || itemsSaving}
                   className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">

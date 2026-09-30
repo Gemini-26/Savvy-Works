@@ -13,6 +13,7 @@ import { SA_PROVINCES } from '../../../shared/constants/regions'
 import { PAYMENT_TYPES } from '../../../shared/constants/paymentTypes'
 import { APPOINTMENT_STATUS_META } from '../../../shared/constants/appointmentStatuses'
 import { fetchJobs } from '../services/jobService'
+import { formatSiteAddress } from '../../../shared/utils/siteAddress'
 
 const STATUS_COLORS = {
   new:         'bg-blue-100 text-blue-700',
@@ -166,6 +167,7 @@ export default function JobsPage({ statusFilter }) {
                 <th className="text-left px-5 py-3">Job Ref.</th>
                 <th className="text-left px-5 py-3">Title</th>
                 <th className="text-left px-5 py-3">Customer</th>
+                <th className="text-left px-5 py-3">Address</th>
                 <th className="text-left px-5 py-3">Assigned To</th>
                 <th className="text-left px-5 py-3">Priority</th>
                 <th className="text-left px-5 py-3">Scheduled</th>
@@ -182,6 +184,11 @@ export default function JobsPage({ statusFilter }) {
                   <td className="px-5 py-3 font-mono text-xs text-gray-500">{job.job_ref ?? '—'}</td>
                   <td className="px-5 py-3 font-medium text-gray-900">{job.title ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{job.customers?.customer_name ?? '—'}</td>
+                  <td className="px-5 py-3 text-gray-600 max-w-[16rem]">
+                    <span className="block truncate" title={formatSiteAddress(job, { full: true })}>
+                      {formatSiteAddress(job) || '—'}
+                    </span>
+                  </td>
                   <AssigneesCell names={job.assignees} />
                   <td className="px-5 py-3 capitalize text-gray-600">{job.priority ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">

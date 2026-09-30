@@ -5,6 +5,7 @@ import { fetchCustomer, updateCustomer, deleteCustomer } from '../services/custo
 import { CURRENCIES } from '../../../shared/constants/currencies'
 import { COUNTRIES } from '../../../shared/constants/countries'
 import { GAUTENG_REGIONS, SA_PROVINCES } from '../../../shared/constants/regions'
+import { normalizePhone } from '../../../shared/utils/phone'
 
 const CUSTOMER_TYPES = ['General Customer', 'Insurance', 'Maintenance', 'Private']
 const STATUSES       = ['Active', 'Inactive']
@@ -63,14 +64,13 @@ function PhoneField({ label, value = '', onChange, readOnly }) {
 }
 
 function toFormPhone(raw) {
-  if (!raw) return '+27-'
-  if (raw.startsWith('+')) return raw
-  return `+27-${raw}`
+  return normalizePhone(raw) || '+27-'
 }
 
+// Saved in full ("+27-821234567"). Stripping the code on save used to
+// throw away a +263/+267 number's country.
 function fromFormPhone(val) {
-  const dash = val.indexOf('-')
-  return dash !== -1 ? val.slice(dash + 1) : val
+  return normalizePhone(val)
 }
 
 export default function CustomerDetailPage() {

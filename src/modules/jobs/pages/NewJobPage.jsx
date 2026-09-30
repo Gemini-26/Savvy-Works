@@ -5,6 +5,7 @@ import { createJob } from '../services/jobService'
 import { supabase } from '../../../lib/supabase'
 import { CUSTOMER_TYPE_LABELS as BASE_CUSTOMER_TYPES } from '../../../shared/constants/customerTypes'
 import { JOB_TYPES } from '../../../shared/constants/jobTypes'
+import { normalizePhone } from '../../../shared/utils/phone'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { CURRENCIES, DEFAULT_CURRENCY } from '../../../shared/constants/currencies'
 import { COUNTRIES, DEFAULT_COUNTRY } from '../../../shared/constants/countries'
@@ -220,8 +221,8 @@ export default function NewJobPage() {
           customer_name: newCustomer.customer_name,
           contact_name:  newCustomer.contact_name,
           email:         newCustomer.email     || null,
-          telephone:     newCustomer.telephone || null,
-          mobile:        newCustomer.mobile    || null,
+          telephone:     normalizePhone(newCustomer.telephone) || null,
+          mobile:        normalizePhone(newCustomer.mobile)    || null,
           fax:           newCustomer.fax       || null,
           website:       newCustomer.website   || null,
           customer_type: newCustomer.customer_type || null,
@@ -285,7 +286,7 @@ export default function NewJobPage() {
       setContacts(contactList || [])
 
       const firstContact = !data.contact_name?.trim() ? (contactList || [])[0] : null
-      const phone = v => v ? `+27-${v}` : '+27-'
+      const phone = v => normalizePhone(v) || '+27-'
       setForm(prev => ({
         ...prev,
         customer_company:  data.customer_name ?? '',
@@ -313,8 +314,8 @@ export default function NewJobPage() {
       ...prev,
       contact_name:      [c.first_name, c.last_name].filter(Boolean).join(' '),
       contact_email:     c.email     ?? '',
-      contact_telephone: c.telephone ? `+27-${c.telephone}` : '+27-',
-      contact_mobile:    c.mobile    ? `+27-${c.mobile}`    : '+27-',
+      contact_telephone: normalizePhone(c.telephone) || '+27-',
+      contact_mobile:    normalizePhone(c.mobile)    || '+27-',
     }))
   }
 
@@ -334,6 +335,10 @@ export default function NewJobPage() {
         quote_id:      null,
         assigned_to:   null,
         scheduled_for: localDateTimeToISO(form.scheduled_for),
+        contact_telephone: normalizePhone(form.contact_telephone) || null,
+        contact_mobile:    normalizePhone(form.contact_mobile)    || null,
+        site_telephone:    normalizePhone(form.site_telephone)    || null,
+        site_mobile:       normalizePhone(form.site_mobile)       || null,
         start_date:    form.start_date    || null,
         complete_by:   form.complete_by   || null,
       })

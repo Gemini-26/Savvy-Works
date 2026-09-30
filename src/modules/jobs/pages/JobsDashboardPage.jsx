@@ -5,6 +5,7 @@ import { supabase } from '../../../lib/supabase'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import DashboardCharts from '../../../shared/components/DashboardCharts.jsx'
 import { formatDate } from '../../../shared/utils/formatDate'
+import { formatSiteAddress } from '../../../shared/utils/siteAddress'
 
 async function fetchCreatedTrend() {
   const days = Array.from({ length: 7 }).map((_, i) => {
@@ -64,7 +65,7 @@ async function fetchStats() {
 async function fetchRecentJobs() {
   const { data } = await supabase
     .from('jobs')
-    .select('id, job_ref, title, status, priority, scheduled_for, customers(customer_name)')
+    .select('id, job_ref, title, status, priority, scheduled_for, site_address, site_city, site_county, site_postcode, customers(customer_name)')
     .is('archived_at', null)
     .order('created_at', { ascending: false })
     .limit(6)
@@ -181,6 +182,7 @@ export default function JobsDashboardPage() {
                   <th className="text-left px-5 py-3">Job #</th>
                   <th className="text-left px-5 py-3">Title</th>
                   <th className="text-left px-5 py-3">Customer</th>
+                  <th className="text-left px-5 py-3">Address</th>
                   <th className="text-left px-5 py-3">Status</th>
                   <th className="text-left px-5 py-3">Scheduled</th>
                 </tr>
@@ -196,6 +198,11 @@ export default function JobsDashboardPage() {
                       </Link>
                     </td>
                     <td className="px-5 py-3 text-gray-600">{job.customers?.customer_name ?? '—'}</td>
+                    <td className="px-5 py-3 text-gray-600 max-w-[16rem]">
+                      <span className="block truncate" title={formatSiteAddress(job, { full: true })}>
+                        {formatSiteAddress(job) || '—'}
+                      </span>
+                    </td>
                     <td className="px-5 py-3">
                       <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium capitalize ${STATUS_STYLES[job.status] ?? 'bg-gray-100 text-gray-600'}`}>
                         {job.status?.replace('_', ' ')}
