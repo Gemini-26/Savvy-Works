@@ -4,6 +4,7 @@ import { logActivity } from '../../../shared/services/activityService'
 import { notifyAdmins } from '../../../shared/services/notificationService'
 import { archiveRecord } from '../../../shared/services/archiveService'
 import { replaceLineItems } from '../../../shared/services/lineItemsService'
+import { compressImage } from '../../../shared/utils/compressImage'
 import { JOB_ASSIGNEES_SELECT, jobAssignees, jobIdsForStaff, jobIdsForStaffNamed } from '../../../shared/utils/assignees'
 import { buildFilters, keywordGroups } from '../../../shared/utils/listFilters'
 
@@ -273,43 +274,74 @@ export async function fetchJobPhotos(jobId) {
 
   if (error) throw error
 
-  return Promise.all(
-    data.map(async photo => {
-      const { data: signed } = await supabase
-        .storage
-        .from(PHOTO_BUCKET)
-        .createSignedUrl(photo.storage_path, 3600)
-      return { ...photo, url: signed?.signedUrl || null }
-    })
-  )
+  if (!data.length) return []
+
+  // One request for every photo's link, rather than one per photo.
+  const { data: signed } = await supabase
+    .storage
+    .from(PHOTO_BUCKET)
+    .createSignedUrls(data.map(p => p.storage_path), 3600)
+  const urlByPath = new Map((signed ?? []).map(s => [s.path, s.signedUrl]))
+  return data.map(photo => ({ ...photo, url: urlByPath.get(photo.storage_path) || null }))
+}
+
+// Uploads one or more photos to a job. Each photo is shrunk on the device
+// first (see compressImage) and up to three go up at once. `onProgress(done,
+// total)` fires as each finishes. Resolves to { uploaded, failed } so a single
+// bad photo doesn't lose the rest of the batch.
+export async function uploadJobPhotos(jobId, files, stage = 'before', onProgress) {
+  const list = [...files]
+  if (!list.length) return { uploaded: 0, failed: [] }
+  const [companyId, profile] = await Promise.all([getMyCompanyId(), getCurrentProfile()])
+
+  let done = 0
+  let uploaded = 0
+  const failed = []
+  const queue = list.map((file, i) => ({ file, i }))
+
+  async function worker() {
+    while (queue.length) {
+      const { file, i } = queue.shift()
+      try {
+        const small = await compressImage(file)
+        const safeName = small.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const storagePath = `${companyId}/${jobId}/${Date.now()}_${i}_${safeName}`
+
+        const { error: uploadError } = await supabase
+          .storage
+          .from(PHOTO_BUCKET)
+          .upload(storagePath, small, { contentType: small.type || 'image/jpeg', cacheControl: '31536000' })
+        if (uploadError) throw uploadError
+
+        const { error: insertError } = await supabase
+          .from('job_photos')
+          .insert([{ job_id: jobId, storage_path: storagePath, file_name: file.name, uploaded_by: profile?.id || null, stage }])
+        if (insertError) {
+          await supabase.storage.from(PHOTO_BUCKET).remove([storagePath]).catch(() => {})
+          throw insertError
+        }
+        uploaded += 1
+      } catch (err) {
+        failed.push({ file, error: err })
+      } finally {
+        done += 1
+        onProgress?.(done, list.length)
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(3, list.length) }, worker))
+
+  if (uploaded) {
+    const what = uploaded === 1 ? `a ${stage} photo` : `${uploaded} ${stage} photos`
+    await logActivity(jobId, 'photo_uploaded', `${profile?.full_name || 'Someone'} uploaded ${what}`).catch(() => {})
+  }
+  return { uploaded, failed }
 }
 
 export async function uploadJobPhoto(jobId, file, stage = 'before') {
-  const companyId = await getMyCompanyId()
-  const profile = await getCurrentProfile()
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const storagePath = `${companyId}/${jobId}/${Date.now()}_${safeName}`
-
-  const { error: uploadError } = await supabase
-    .storage
-    .from(PHOTO_BUCKET)
-    .upload(storagePath, file)
-
-  if (uploadError) throw uploadError
-
-  const { error: insertError } = await supabase
-    .from('job_photos')
-    .insert([{
-      job_id: jobId,
-      storage_path: storagePath,
-      file_name: file.name,
-      uploaded_by: profile?.id || null,
-      stage,
-    }])
-
-  if (insertError) throw insertError
-
-  await logActivity(jobId, 'photo_uploaded', `${profile?.full_name || 'Someone'} uploaded a photo (${file.name})`).catch(() => {})
+  const { failed } = await uploadJobPhotos(jobId, [file], stage)
+  if (failed.length) throw failed[0].error
 }
 
 export async function deleteJobPhoto(photo) {

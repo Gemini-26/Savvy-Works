@@ -1,14 +1,15 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip, Loader2 } from 'lucide-react'
 import { fetchMyAppointment, respondToAppointment, updateAppointmentStatus, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
 import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
 import { APPOINTMENT_STATUS_META, TECH_UPDATABLE_STATUSES } from '../../../shared/constants/appointmentStatuses'
-import { fetchJobPhotos, uploadJobPhoto, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument } from '../../jobs/services/jobService'
+import { fetchJobPhotos, uploadJobPhotos, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument } from '../../jobs/services/jobService'
 import { fetchAssignmentTeamMembers, setAssignmentTeamMembers } from '../../users/services/teamMembersService'
 import CompleteJobModal from '../../jobs/components/CompleteJobModal'
 import SelectTeamModal from '../components/SelectTeamModal'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
+import PhotoPicker from '../../../shared/components/PhotoPicker'
 import { formatDateLong, formatTime } from '../../../shared/utils/formatDate'
 import { formatHoursDuration } from '../../../shared/utils/shiftSummary'
 
@@ -26,7 +27,10 @@ export default function JobDetailPage({ profile }) {
   const [showSelectTeam, setShowSelectTeam] = useState(false)
   const [confirmClockOut, setConfirmClockOut] = useState(false)
   const [photoTab, setPhotoTab] = useState('before')
-  const fileRef = useRef(null)
+  // Photos still uploading: local previews shown straight away in the grid.
+  const [pendingPhotos, setPendingPhotos] = useState([])
+  const [photoProgress, setPhotoProgress] = useState(null)
+  const [photoError, setPhotoError] = useState(null)
   const docFileRef = useRef(null)
 
   async function load() {
@@ -95,16 +99,24 @@ export default function JobDetailPage({ profile }) {
     }
   }
 
-  async function handleUpload(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setBusy(true)
+  async function handlePhotoFiles(files) {
+    const stage = photoTab
+    const previews = files.map((file, i) => ({ key: `${Date.now()}_${i}`, stage, url: URL.createObjectURL(file) }))
+    setPendingPhotos(prev => [...prev, ...previews])
+    setPhotoError(null)
+    setPhotoProgress({ done: 0, total: files.length })
     try {
-      await uploadJobPhoto(appt.job_id, file, photoTab)
+      const { failed } = await uploadJobPhotos(appt.job_id, files, stage, (done, total) => setPhotoProgress({ done, total }))
       setPhotos(await fetchJobPhotos(appt.job_id))
+      if (failed.length) {
+        setPhotoError(`${failed.length} of ${files.length} photo${files.length === 1 ? '' : 's'} failed to upload — check your signal and try again.`)
+      }
+    } catch (err) {
+      setPhotoError(err.message || 'Photo upload failed')
     } finally {
-      setBusy(false)
-      e.target.value = ''
+      previews.forEach(p => URL.revokeObjectURL(p.url))
+      setPendingPhotos(prev => prev.filter(p => !previews.includes(p)))
+      setPhotoProgress(null)
     }
   }
 
@@ -155,6 +167,7 @@ export default function JobDetailPage({ profile }) {
   const afterPhotos = photos.filter(p => p.stage === 'after')
   const hasBeforeAfter = beforePhotos.length > 0 && afterPhotos.length > 0
   const visiblePhotos = photoTab === 'before' ? beforePhotos : afterPhotos
+  const visiblePending = pendingPhotos.filter(p => p.stage === photoTab)
   // Team members clock in and out with the technician, so everyone on this
   // assignment shares one on-site window.
   const onSiteMs = appt.actual_start && appt.actual_end
@@ -333,16 +346,34 @@ export default function JobDetailPage({ profile }) {
           </div>
 
           {canManagePhotos && (
-            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-1 text-xs font-medium text-blue-600">
-              <Camera size={14} /> Add {photoTab === 'before' ? 'Before' : 'After'} Photo
-            </button>
+            <div className="flex items-center justify-between gap-2">
+              <PhotoPicker onFiles={handlePhotoFiles} className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 py-1">
+                <Camera size={16} /> Add {photoTab === 'before' ? 'Before' : 'After'} Photos
+              </PhotoPicker>
+              {photoProgress && (
+                <span className="flex items-center gap-1.5 text-xs text-gray-500">
+                  <Loader2 size={13} className="animate-spin" />
+                  Uploading {Math.min(photoProgress.done + 1, photoProgress.total)} of {photoProgress.total}…
+                </span>
+              )}
+            </div>
           )}
-          <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={handleUpload} />
+          {photoError && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{photoError}</p>
+          )}
 
-          {visiblePhotos.length === 0 ? (
+          {visiblePhotos.length === 0 && visiblePending.length === 0 ? (
             <p className="text-sm text-gray-400">No {photoTab} photos yet.</p>
           ) : (
             <div className="grid grid-cols-3 gap-2">
+              {visiblePending.map(p => (
+                <div key={p.key} className="relative aspect-square rounded-lg overflow-hidden bg-gray-100">
+                  <img src={p.url} alt="Uploading" className="w-full h-full object-cover opacity-60" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Loader2 size={22} className="animate-spin text-white drop-shadow" />
+                  </div>
+                </div>
+              ))}
               {visiblePhotos.map(photo => {
                 const isAdminPhoto = photo.profiles?.role === 'admin'
                 const isOwnPhoto = photo.uploaded_by === profile.id

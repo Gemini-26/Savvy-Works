@@ -1,13 +1,14 @@
 import { useState, useEffect, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
-import { fetchJob, updateJob, deleteJob, fetchJobPhotos, uploadJobPhoto, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument, confirmJobComplete, fetchJobItems, updateJobItems } from '../services/jobService'
+import { fetchJob, updateJob, deleteJob, fetchJobPhotos, uploadJobPhotos, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument, confirmJobComplete, fetchJobItems, updateJobItems } from '../services/jobService'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { fetchAppointmentsForJob, clockInAssignment, clockOutAssignment } from '../../planner/services/appointmentService'
 import { PENDING_RESPONSE_STATUSES } from '../../technician/services/technicianService'
 import AppointmentModal from '../../planner/components/AppointmentModal'
 import CompleteJobModal from '../components/CompleteJobModal'
 import EditClockTimesModal from '../components/EditClockTimesModal'
+import PhotoPicker from '../../../shared/components/PhotoPicker'
 import { normalizePhone } from '../../../shared/utils/phone'
 import { createInvoiceFromJob, findInvoiceForJob } from '../../finance/services/invoiceService'
 import { fetchJobActivity } from '../../../shared/services/activityService'
@@ -231,18 +232,16 @@ export default function JobDetailPage() {
     }
   }
 
-  async function handlePhotoSelect(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setPhotoUploading(true)
+  async function handlePhotoFiles(files) {
+    setPhotoUploading({ done: 0, total: files.length })
     try {
-      await uploadJobPhoto(id, file)
+      const { failed } = await uploadJobPhotos(id, files, 'before', (done, total) => setPhotoUploading({ done, total }))
       await loadPhotos()
+      if (failed.length) setError(`${failed.length} of ${files.length} photo${files.length === 1 ? '' : 's'} failed to upload.`)
     } catch (err) {
       setError(err.message || 'Failed to upload photo')
     } finally {
       setPhotoUploading(false)
-      e.target.value = ''
     }
   }
 
@@ -730,10 +729,14 @@ export default function JobDetailPage() {
         <div className="bg-white border border-gray-200 border-t-0 rounded-b-xl p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-bold text-gray-700">Photos &amp; Attachments</h2>
-            <label className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-semibold hover:bg-blue-700 transition-colors cursor-pointer">
-              {photoUploading ? 'Uploading…' : '+ Upload Photo'}
-              <input type="file" accept="image/*" className="hidden" disabled={photoUploading} onChange={handlePhotoSelect} />
-            </label>
+            <PhotoPicker
+              onFiles={handlePhotoFiles}
+              disabled={!!photoUploading}
+              align="right"
+              className="bg-blue-600 text-white px-3 py-1.5 rounded text-xs font-semibold hover:bg-blue-700 transition-colors disabled:opacity-60"
+            >
+              {photoUploading ? `Uploading ${Math.min(photoUploading.done + 1, photoUploading.total)} of ${photoUploading.total}…` : '+ Upload Photos'}
+            </PhotoPicker>
           </div>
           {photosLoading ? (
             <p className="text-sm text-gray-400">Loading photos…</p>
