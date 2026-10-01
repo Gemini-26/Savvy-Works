@@ -27,5 +27,9 @@ export const TECH_UPDATABLE_STATUSES = [
   'awaiting_auth', 'follow_on', 'abandoned',
 ]
 
+// Technician-set statuses where the visit is paused rather than finished —
+// the technician must still be able to resume or complete the job.
+export const PAUSED_STATUSES = ['no_access', 'on_hold', 'awaiting_auth', 'follow_on']
+
 // Statuses that trigger a customer-facing notification when a technician sets them.
 export const CUSTOMER_NOTIFIED_STATUSES = new Set(['on_route'])

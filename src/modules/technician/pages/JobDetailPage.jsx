@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip, Loader2 } from 'lucide-react'
 import { fetchMyAppointment, respondToAppointment, updateAppointmentStatus, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
 import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
-import { APPOINTMENT_STATUS_META, TECH_UPDATABLE_STATUSES } from '../../../shared/constants/appointmentStatuses'
+import { APPOINTMENT_STATUS_META, TECH_UPDATABLE_STATUSES, PAUSED_STATUSES } from '../../../shared/constants/appointmentStatuses'
 import { fetchJobPhotos, uploadJobPhotos, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument } from '../../jobs/services/jobService'
 import { fetchAssignmentTeamMembers, setAssignmentTeamMembers } from '../../users/services/teamMembersService'
 import CompleteJobModal from '../../jobs/components/CompleteJobModal'
@@ -159,7 +159,10 @@ export default function JobDetailPage({ profile }) {
   const job = appt.jobs
   const statusMeta = APPOINTMENT_STATUS_META[appt.status]
   const isPending = PENDING_RESPONSE_STATUSES.includes(appt.status)
-  const isAccepted = appt.status === 'accepted' || appt.status === 'on_route' || appt.status === 'on_site'
+  // Paused statuses (On Hold, No Access…) stay actionable so the technician
+  // can resume, or complete, the job once the blocker is cleared.
+  const isPaused = PAUSED_STATUSES.includes(appt.status)
+  const isAccepted = appt.status === 'accepted' || appt.status === 'on_route' || appt.status === 'on_site' || isPaused
   const isPendingConfirmation = job?.status === 'pending_confirmation'
   const isCompleted = job?.status === 'completed' || job?.status === 'invoiced'
   const canManagePhotos = !isCompleted
@@ -264,6 +267,15 @@ export default function JobDetailPage({ profile }) {
         {isAccepted && !isCompleted && !isPendingConfirmation && (
           <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Update Status</p>
+            {isPaused && (
+              <button
+                disabled={busy}
+                onClick={() => updateStatus(appt.actual_start ? 'on_site' : 'accepted')}
+                className="w-full bg-green-600 text-white text-sm font-semibold py-2.5 rounded-lg disabled:opacity-50"
+              >
+                Resume Job
+              </button>
+            )}
             {appt.status === 'accepted' && (
               <button
                 disabled={busy}
