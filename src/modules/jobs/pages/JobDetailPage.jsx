@@ -4,11 +4,12 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchJob, updateJob, deleteJob, fetchJobPhotos, uploadJobPhotos, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument, confirmJobComplete, fetchJobItems, updateJobItems } from '../services/jobService'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { fetchAppointmentsForJob, clockInAssignment, clockOutAssignment } from '../../planner/services/appointmentService'
-import { PENDING_RESPONSE_STATUSES } from '../../technician/services/technicianService'
+import { PENDING_RESPONSE_STATUSES, updateAppointmentStatus } from '../../technician/services/technicianService'
 import AppointmentModal from '../../planner/components/AppointmentModal'
 import CompleteJobModal from '../components/CompleteJobModal'
 import EditClockTimesModal from '../components/EditClockTimesModal'
 import PhotoPicker from '../../../shared/components/PhotoPicker'
+import { PAUSED_STATUSES } from '../../../shared/constants/appointmentStatuses'
 import { normalizePhone } from '../../../shared/utils/phone'
 import { createInvoiceFromJob, findInvoiceForJob } from '../../finance/services/invoiceService'
 import { fetchJobActivity } from '../../../shared/services/activityService'
@@ -304,6 +305,15 @@ export default function JobDetailPage() {
     }
   }
 
+  async function handleResumeAppointment(apptId) {
+    try {
+      await updateAppointmentStatus(apptId, 'on_site')
+      await loadAppointments()
+    } catch (err) {
+      setError(err.message || 'Failed to update status')
+    }
+  }
+
   async function handleClockOut(assignmentId) {
     try {
       await clockOutAssignment(assignmentId)
@@ -582,6 +592,15 @@ export default function JobDetailPage() {
                         }`}>
                           {appt.status?.replace(/_/g, ' ')}
                         </span>
+                        {isAdmin && PAUSED_STATUSES.includes(appt.status) && (
+                          <button
+                            type="button"
+                            onClick={() => handleResumeAppointment(appt.id)}
+                            className="bg-green-600 text-white px-2.5 py-1 rounded text-xs font-semibold hover:bg-green-700 transition-colors"
+                          >
+                            Set On Site
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => setEditingAppt(appt)}
