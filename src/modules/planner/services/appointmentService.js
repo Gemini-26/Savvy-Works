@@ -284,7 +284,23 @@ export async function deleteAppointment(id) {
     throw new Error(`${names} already clocked in on this visit, so deleting it would delete their worked hours. Set its status to Cancelled instead — that hides it from technicians and keeps the hours.`)
   }
 
+  // Read what's needed for the notice/log before the cascade removes it.
+  const { data: appt } = await supabase
+    .from('appointments')
+    .select('job_id, scheduled_start, appointment_assignments(technician_id)')
+    .eq('id', id)
+    .maybeSingle()
+
   const { data, error } = await supabase.from('appointments').delete().eq('id', id).select('id')
   if (error) throw error
   if (!data?.length) throw new Error('Delete failed — the appointment was not removed. Check your permissions.')
+
+  if (appt?.job_id) {
+    const profile = await getCurrentProfile().catch(() => null)
+    const when = appt.scheduled_start
+      ? new Date(appt.scheduled_start).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })
+      : 'unscheduled'
+    await logActivity(appt.job_id, 'appointment_deleted', `Appointment on ${when} deleted by ${profile?.full_name || 'admin'}`).catch(() => {})
+    await notifyRemovedAssignees((appt.appointment_assignments || []).map(a => a.technician_id), appt.job_id)
+  }
 }
