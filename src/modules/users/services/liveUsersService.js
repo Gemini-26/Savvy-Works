@@ -127,6 +127,7 @@ export async function fetchSiteVisits() {
         technicians,
         color: technicians[0]?.color ?? '#9CA3AF',
         current,
+        onRoute: !current && a.status === 'on_route',
       }
     })
     .filter(v => v.current || new Date(v.scheduledEnd ?? v.scheduledStart).getTime() >= now)

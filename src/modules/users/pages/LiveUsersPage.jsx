@@ -72,6 +72,8 @@ function SiteRow({ site }) {
       <div className="text-xs text-gray-400 flex-shrink-0 text-right">
         {site.current
           ? <span className="text-emerald-600 font-medium">In progress</span>
+          : site.onRoute
+          ? <span className="text-orange-600 font-medium">🚐 On route</span>
           : new Date(site.scheduledStart).toLocaleString('en-ZA', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
       </div>
     </Link>

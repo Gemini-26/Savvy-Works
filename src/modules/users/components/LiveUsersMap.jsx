@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { geocodeSiteAddress } from '../../../shared/utils/geocode'
@@ -13,7 +13,19 @@ const techIcon = L.divIcon({
 
 // Sites are squares in the assigned technician's colour: solid with a dark
 // ring for a site being worked now, hollow for an upcoming one.
-function siteIcon(color, current) {
+function siteIcon(color, current, onRoute) {
+  if (onRoute) {
+    // Solid square in the technician's colour with a pulsing ring: someone is on the way.
+    return L.divIcon({
+      className: '',
+      html: `<div style="position:relative;width:24px;height:24px">
+        <span class="sw-pulse" style="position:absolute;inset:0;border-radius:9999px;border:3px solid ${color}"></span>
+        <div style="position:absolute;left:4px;top:4px;width:16px;height:16px;background:${color};border:2px solid #111827;border-radius:3px"></div>
+      </div>`,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+    })
+  }
   const style = current
     ? `background:${color};border:2px solid #111827;width:16px;height:16px`
     : `background:white;border:3px solid ${color};width:12px;height:12px`
@@ -60,14 +72,25 @@ export default function LiveUsersMap({ users, sites = [] }) {
   ]
   const center = allPoints.length ? allPoints[0] : DEFAULT_CENTER
 
+  // Dashed line from each on-route technician's live GPS position to the site
+  // they're heading to.
+  const routeLines = siteMarkers
+    .filter(({ site }) => site.onRoute)
+    .flatMap(({ site, point }) => site.technicians
+      .map(t => users.find(u => u.technicianId === t.id))
+      .filter(u => u && u.lastLat != null && u.lastLocationAgeMs < RECENT_MS)
+      .map(u => ({ key: `${site.id}-${u.technicianId}`, color: site.color, from: [u.lastLat, u.lastLng], to: [point.lat, point.lng] })))
+
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+      <style>{`@keyframes sw-pulse{0%{transform:scale(.7);opacity:.9}100%{transform:scale(1.5);opacity:0}}.sw-pulse{animation:sw-pulse 1.6s ease-out infinite}`}</style>
       <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
         <h2 className="font-semibold text-gray-900">Live Map</h2>
         <div className="flex items-center gap-4 text-xs text-gray-500">
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" /> Technician</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-gray-500 border border-gray-900 inline-block" /> Current site</span>
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-white border-2 border-gray-500 inline-block" /> Upcoming site</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border-2 border-orange-500 inline-block" /> On route</span>
         </div>
       </div>
       <div style={{ height: 360 }}>
@@ -84,13 +107,18 @@ export default function LiveUsersMap({ users, sites = [] }) {
               </Popup>
             </Marker>
           ))}
+          {routeLines.map(l => (
+            <Polyline key={l.key} positions={[l.from, l.to]} pathOptions={{ color: l.color, weight: 3, dashArray: '8 8' }} />
+          ))}
           {siteMarkers.map(({ site, point }) => (
-            <Marker key={`site-${site.id}`} position={[point.lat, point.lng]} icon={siteIcon(site.color, site.current)}>
+            <Marker key={`site-${site.id}`} position={[point.lat, point.lng]} icon={siteIcon(site.color, site.current, site.onRoute)}>
               <Popup>
                 <strong>{site.title}</strong><br />
                 {site.location}<br />
                 {site.current
                   ? 'In progress'
+                  : site.onRoute
+                  ? '🚐 Technician on route'
                   : `Scheduled ${new Date(site.scheduledStart).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}`}<br />
                 {site.technicians.length ? site.technicians.map(t => t.name).join(', ') : 'Unassigned'}
               </Popup>
