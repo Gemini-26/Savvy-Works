@@ -25,6 +25,7 @@ export default function JobDetailPage({ profile }) {
   const [docBusy, setDocBusy] = useState(false)
   const [showComplete, setShowComplete] = useState(false)
   const [showSelectTeam, setShowSelectTeam] = useState(false)
+  const [showEditTeam, setShowEditTeam] = useState(false)
   const [confirmClockOut, setConfirmClockOut] = useState(false)
   const [photoTab, setPhotoTab] = useState('before')
   // Photos still uploading: local previews shown straight away in the grid.
@@ -85,6 +86,17 @@ export default function JobDetailPage({ profile }) {
     } finally {
       setBusy(false)
       setShowSelectTeam(false)
+    }
+  }
+
+  async function handleEditTeamConfirm(selectedTeamMemberIds) {
+    setBusy(true)
+    try {
+      await setAssignmentTeamMembers(appt.assignmentId, selectedTeamMemberIds)
+      await load()
+      setShowEditTeam(false)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -219,6 +231,11 @@ export default function JobDetailPage({ profile }) {
                   <span className="text-gray-800 truncate">{profile.full_name} <span className="text-xs text-gray-400">· you</span></span>
                   <span className="text-xs text-gray-500 shrink-0">{onSiteLabel}</span>
                 </div>
+              )}
+              {appt.actual_start && !isCompleted && !isPendingConfirmation && (
+                <button type="button" onClick={() => setShowEditTeam(true)} className="text-xs font-semibold text-blue-600">
+                  + Add / edit team members
+                </button>
               )}
               {teamMembers.map(m => (
                 <div key={m.id} className="flex items-center justify-between text-sm">
@@ -464,6 +481,15 @@ export default function JobDetailPage({ profile }) {
           busy={busy}
           onConfirm={handleClockInConfirm}
           onClose={() => setShowSelectTeam(false)}
+        />
+      )}
+
+      {showEditTeam && (
+        <SelectTeamModal
+          busy={busy}
+          existing={teamMembers}
+          onConfirm={handleEditTeamConfirm}
+          onClose={() => setShowEditTeam(false)}
         />
       )}
 

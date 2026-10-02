@@ -8,6 +8,8 @@ import { PENDING_RESPONSE_STATUSES, updateAppointmentStatus } from '../../techni
 import AppointmentModal from '../../planner/components/AppointmentModal'
 import CompleteJobModal from '../components/CompleteJobModal'
 import EditClockTimesModal from '../components/EditClockTimesModal'
+import SelectTeamModal from '../../technician/components/SelectTeamModal'
+import { setAssignmentTeamMembers } from '../../users/services/teamMembersService'
 import PhotoPicker from '../../../shared/components/PhotoPicker'
 import { PAUSED_STATUSES } from '../../../shared/constants/appointmentStatuses'
 import { normalizePhone } from '../../../shared/utils/phone'
@@ -124,6 +126,8 @@ export default function JobDetailPage() {
   const [apptModal,     setApptModal]     = useState(false)
   const [editingAppt,   setEditingAppt]   = useState(null)
   const [editingClock,  setEditingClock]  = useState(null)
+  const [editingTeam,   setEditingTeam]   = useState(null)
+  const [teamBusy,      setTeamBusy]      = useState(false)
   const [completeModal, setCompleteModal] = useState(false)
   const [invoicing,     setInvoicing]     = useState(false)
   const [existingInvoice, setExistingInvoice] = useState(null)
@@ -311,6 +315,20 @@ export default function JobDetailPage() {
       await loadAppointments()
     } catch (err) {
       setError(err.message || 'Failed to update status')
+    }
+  }
+
+  async function handleSaveTeam(teamMemberIds) {
+    setTeamBusy(true)
+    try {
+      await setAssignmentTeamMembers(editingTeam.id, teamMemberIds)
+      await loadAppointments()
+      setEditingTeam(null)
+    } catch (err) {
+      setError(err.message || 'Failed to update team members')
+      setEditingTeam(null)
+    } finally {
+      setTeamBusy(false)
     }
   }
 
@@ -653,6 +671,12 @@ export default function JobDetailPage() {
                                       <button type="button" onClick={() => setEditingClock(a)}
                                         className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">
                                         {a.actual_start ? 'Edit clock times' : 'Enter clock times'}
+                                      </button>
+                                    )}
+                                    {isAdmin && a.actual_start && (
+                                      <button type="button" onClick={() => setEditingTeam(a)}
+                                        className="ml-3 text-[11px] font-semibold text-blue-600 hover:text-blue-700">
+                                        Add / edit team members
                                       </button>
                                     )}
                                   </div>
@@ -1189,6 +1213,15 @@ export default function JobDetailPage() {
           crew={(editingClock.assignment_team_members || []).map(t => t.team_members).filter(Boolean)}
           onClose={() => setEditingClock(null)}
           onSaved={loadAppointments}
+        />
+      )}
+
+      {editingTeam && (
+        <SelectTeamModal
+          busy={teamBusy}
+          existing={(editingTeam.assignment_team_members || []).map(t => t.team_members).filter(Boolean)}
+          onConfirm={handleSaveTeam}
+          onClose={() => setEditingTeam(null)}
         />
       )}
 

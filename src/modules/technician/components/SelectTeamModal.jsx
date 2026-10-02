@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 import { fetchTeamMembers, createCasualTeamMember } from '../../users/services/teamMembersService'
 
 // Shown right before a technician clocks in on site — lets them say
-// who (if anyone) came with them, without forcing a selection.
-export default function SelectTeamModal({ onConfirm, onClose, busy }) {
+// who (if anyone) came with them, without forcing a selection. Also reused
+// after clock-in (`existing` set) so the team can be corrected on the job.
+export default function SelectTeamModal({ onConfirm, onClose, busy, existing = null }) {
+  const editing = existing !== null
   const [members, setMembers] = useState([])
-  const [selected, setSelected] = useState([])
+  const [selected, setSelected] = useState(() => (existing || []).map(m => m.id))
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [addingCasual, setAddingCasual] = useState(false)
@@ -14,7 +16,9 @@ export default function SelectTeamModal({ onConfirm, onClose, busy }) {
 
   useEffect(() => {
     fetchTeamMembers(true)
-      .then(setMembers)
+      // Casual labourers are inactive, so they'd be missing from the pool —
+      // keep anyone already on this clock-in visible and selectable.
+      .then(list => setMembers([...list, ...(existing || []).filter(e => !list.some(m => m.id === e.id))]))
       .catch(err => setError(err.message || 'Failed to load team members'))
       .finally(() => setLoading(false))
   }, [])
@@ -45,13 +49,15 @@ export default function SelectTeamModal({ onConfirm, onClose, busy }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-900">Who's with you?</h2>
+          <h2 className="text-base font-bold text-gray-900">{editing ? 'Team on this job' : "Who's with you?"}</h2>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
         <div className="px-5 py-4 space-y-3">
           <p className="text-sm text-gray-500">
-            Select any team members clocking in with you on this job. You can leave this blank if you're on your own.
+            {editing
+              ? "Add anyone who joined you on this job. They share the on-site time already clocked."
+              : "Select any team members clocking in with you on this job. You can leave this blank if you're on your own."}
           </p>
 
           {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded">{error}</div>}
@@ -128,7 +134,9 @@ export default function SelectTeamModal({ onConfirm, onClose, busy }) {
               onClick={() => onConfirm(selected)}
               className="flex-1 bg-blue-600 text-white py-2 rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
-              {busy ? 'Clocking in…' : selected.length > 0 ? `Clock In with ${selected.length} team member${selected.length === 1 ? '' : 's'}` : 'Clock In Alone'}
+              {editing
+                ? (busy ? 'Saving…' : 'Save Team')
+                : busy ? 'Clocking in…' : selected.length > 0 ? `Clock In with ${selected.length} team member${selected.length === 1 ? '' : 's'}` : 'Clock In Alone'}
             </button>
             <button
               type="button"
