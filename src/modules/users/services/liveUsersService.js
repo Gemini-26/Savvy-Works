@@ -72,3 +72,62 @@ export async function fetchLiveUsers() {
 
   return rows.sort((a, b) => new Date(a.clockIn) - new Date(b.clockIn))
 }
+
+const FALLBACK_COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#14B8A6', '#6366F1', '#EC4899']
+
+// A technician's colour: their profile colour, or a stable fallback from their
+// id so the same person is always the same colour on the list and the map.
+export function technicianColor(profile, id) {
+  if (profile?.color) return profile.color
+  const key = String(id || '')
+  let hash = 0
+  for (let i = 0; i < key.length; i++) hash = (hash * 31 + key.charCodeAt(i)) >>> 0
+  return FALLBACK_COLORS[hash % FALLBACK_COLORS.length]
+}
+
+// Every site being worked right now (someone clocked in, or status On Site)
+// plus every upcoming visit, each carrying its assigned technicians.
+export async function fetchSiteVisits() {
+  const startOfToday = new Date()
+  startOfToday.setHours(0, 0, 0, 0)
+
+  const { data, error } = await supabase
+    .from('appointments')
+    .select(`
+      id, status, scheduled_start, scheduled_end,
+      jobs(id, job_ref, title, archived_at, site_address, site_city, site_county, site_postcode),
+      appointment_assignments(technician_id, actual_start, actual_end, profiles(id, full_name, color))
+    `)
+    .not('status', 'in', '(cancelled,completed,declined,invoiced)')
+    .gte('scheduled_end', startOfToday.toISOString())
+    .order('scheduled_start', { ascending: true })
+    .limit(300)
+  if (error) throw error
+
+  const now = Date.now()
+  return (data || [])
+    .filter(a => a.jobs && !a.jobs.archived_at)
+    .map(a => {
+      const assignments = a.appointment_assignments || []
+      const technicians = assignments.map(x => ({
+        id: x.technician_id,
+        name: x.profiles?.full_name ?? 'Unknown',
+        color: technicianColor(x.profiles, x.technician_id),
+      }))
+      const current = a.status === 'on_site' || assignments.some(x => x.actual_start && !x.actual_end)
+      return {
+        id: a.id,
+        jobId: a.jobs.id,
+        title: a.jobs.title ?? a.jobs.job_ref,
+        ref: a.jobs.job_ref,
+        location: siteAddress(a.jobs),
+        scheduledStart: a.scheduled_start,
+        scheduledEnd: a.scheduled_end,
+        status: a.status,
+        technicians,
+        color: technicians[0]?.color ?? '#9CA3AF',
+        current,
+      }
+    })
+    .filter(v => v.current || new Date(v.scheduledEnd ?? v.scheduledStart).getTime() >= now)
+}

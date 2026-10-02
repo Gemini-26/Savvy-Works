@@ -10,45 +10,53 @@ const techIcon = L.divIcon({
   iconSize: [14, 14],
   iconAnchor: [7, 7],
 })
-const jobIcon = L.divIcon({
-  className: '',
-  html: '<div style="width:12px;height:12px;border-radius:2px;background:#F59E0B;border:2px solid white;box-shadow:0 0 0 1px rgba(0,0,0,.15)"></div>',
-  iconSize: [12, 12],
-  iconAnchor: [6, 6],
-})
+
+// Sites are squares in the assigned technician's colour: solid with a dark
+// ring for a site being worked now, hollow for an upcoming one.
+function siteIcon(color, current) {
+  const style = current
+    ? `background:${color};border:2px solid #111827;width:16px;height:16px`
+    : `background:white;border:3px solid ${color};width:12px;height:12px`
+  return L.divIcon({
+    className: '',
+    html: `<div style="${style};border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,.15)"></div>`,
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  })
+}
 
 const DEFAULT_CENTER = [-26.2041, 28.0473] // Johannesburg, roughly the middle of the map when nothing else is known
 const RECENT_MS = 15 * 60 * 1000 // a GPS fix older than this is stale, not "live"
 
-// Geocodes each visible job-site address once and caches the result for
-// the life of this mount — addresses repeat often (same site, many jobs).
-function useGeocodedJobSites(users) {
+// Geocodes each site address once and caches the result for the life of
+// this mount — addresses repeat often (same site, many visits).
+function useGeocodedSites(addresses) {
   const [points, setPoints] = useState({})
 
   useEffect(() => {
-    const addresses = [...new Set(users.map(u => u.currentJob?.location).filter(Boolean))]
     addresses.forEach(async (address) => {
       if (points[address] !== undefined) return
       const point = await geocodeAddress(address)
       setPoints(prev => (prev[address] !== undefined ? prev : { ...prev, [address]: point }))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [users])
+  }, [addresses.join('|')])
 
   return points
 }
 
-export default function LiveUsersMap({ users }) {
-  const jobSitePoints = useGeocodedJobSites(users)
+export default function LiveUsersMap({ users, sites = [] }) {
+  const addresses = [...new Set(sites.map(v => v.location).filter(Boolean))]
+  const sitePoints = useGeocodedSites(addresses)
 
   const techMarkers = users.filter(u => u.lastLat != null && u.lastLng != null && u.lastLocationAgeMs < RECENT_MS)
-  const jobMarkers = users
-    .filter(u => u.currentJob?.location && jobSitePoints[u.currentJob.location])
-    .map(u => ({ user: u, point: jobSitePoints[u.currentJob.location] }))
+  const siteMarkers = sites
+    .filter(v => v.location && sitePoints[v.location])
+    .map(v => ({ site: v, point: sitePoints[v.location] }))
 
   const allPoints = [
     ...techMarkers.map(u => [u.lastLat, u.lastLng]),
-    ...jobMarkers.map(m => [m.point.lat, m.point.lng]),
+    ...siteMarkers.map(m => [m.point.lat, m.point.lng]),
   ]
   const center = allPoints.length ? allPoints[0] : DEFAULT_CENTER
 
@@ -58,7 +66,8 @@ export default function LiveUsersMap({ users }) {
         <h2 className="font-semibold text-gray-900">Live Map</h2>
         <div className="flex items-center gap-4 text-xs text-gray-500">
           <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" /> Technician</span>
-          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" /> Job site</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-gray-500 border border-gray-900 inline-block" /> Current site</span>
+          <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-white border-2 border-gray-500 inline-block" /> Upcoming site</span>
         </div>
       </div>
       <div style={{ height: 360 }}>
@@ -75,12 +84,15 @@ export default function LiveUsersMap({ users }) {
               </Popup>
             </Marker>
           ))}
-          {jobMarkers.map(({ user, point }) => (
-            <Marker key={`job-${user.technicianId}`} position={[point.lat, point.lng]} icon={jobIcon}>
+          {siteMarkers.map(({ site, point }) => (
+            <Marker key={`site-${site.id}`} position={[point.lat, point.lng]} icon={siteIcon(site.color, site.current)}>
               <Popup>
-                <strong>{user.currentJob.title ?? user.currentJob.ref}</strong><br />
-                {user.currentJob.location}<br />
-                Assigned to {user.fullName}
+                <strong>{site.title}</strong><br />
+                {site.location}<br />
+                {site.current
+                  ? 'In progress'
+                  : `Scheduled ${new Date(site.scheduledStart).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })}`}<br />
+                {site.technicians.length ? site.technicians.map(t => t.name).join(', ') : 'Unassigned'}
               </Popup>
             </Marker>
           ))}
