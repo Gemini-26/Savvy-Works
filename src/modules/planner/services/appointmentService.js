@@ -25,6 +25,21 @@ async function notifyNewAssignees(technicianIds, jobId) {
   ))
 }
 
+// Removed technicians lose the job from their list, so tell them why it
+// vanished. Links to their own list — they can no longer open the job.
+async function notifyRemovedAssignees(technicianIds, jobId) {
+  if (!technicianIds.length || !jobId) return
+  const { data: job } = await supabase.from('jobs').select('title, job_ref').eq('id', jobId).maybeSingle()
+  const jobLabel = job?.title || job?.job_ref || 'a job'
+  await Promise.all(technicianIds.map(tid =>
+    notifyUser(tid, {
+      title: 'Removed from job',
+      body: `You've been taken off "${jobLabel}".`,
+      link: '/my-jobs',
+    }).catch(() => {})
+  ))
+}
+
 // Local-day window as real instants. Bare "YYYY-MM-DDT00:00:00" strings are
 // read as UTC, which made the planner's day run 02:00–01:59 SAST.
 export async function fetchAppointmentsForDay(dateStr) {
@@ -250,6 +265,7 @@ export async function updateAppointmentTechnicians(appointmentId, technicianIds)
 
     const newlyAdded = technicianIds.filter(tid => !priorIds.includes(tid))
     await notifyNewAssignees(newlyAdded, appt.job_id)
+    await notifyRemovedAssignees(removed.map(r => r.technician_id), appt.job_id)
   }
 }
 
