@@ -40,6 +40,19 @@ async function notifyRemovedAssignees(technicianIds, jobId) {
   ))
 }
 
+async function notifyAppointmentCancelled(technicianIds, jobId, when) {
+  if (!technicianIds.length || !jobId) return
+  const { data: job } = await supabase.from('jobs').select('title, job_ref').eq('id', jobId).maybeSingle()
+  const jobLabel = job?.title || job?.job_ref || 'a job'
+  await Promise.all(technicianIds.map(tid =>
+    notifyUser(tid, {
+      title: 'Appointment cancelled',
+      body: `Your appointment on ${when} for "${jobLabel}" has been cancelled.`,
+      link: '/my-jobs',
+    }).catch(() => {})
+  ))
+}
+
 // Local-day window as real instants. Bare "YYYY-MM-DDT00:00:00" strings are
 // read as UTC, which made the planner's day run 02:00–01:59 SAST.
 export async function fetchAppointmentsForDay(dateStr) {
@@ -211,6 +224,17 @@ export async function createAppointment(appt, technicianIds = []) {
 }
 
 export async function updateAppointment(id, updates) {
+  // Cancelling is a status change made here, so spot it against the prior status.
+  let before = null
+  if (updates.status === 'cancelled') {
+    const { data: prior } = await supabase
+      .from('appointments')
+      .select('status, job_id, scheduled_start, appointment_assignments(technician_id)')
+      .eq('id', id)
+      .maybeSingle()
+    before = prior
+  }
+
   const { data, error } = await supabase
     .from('appointments')
     .update(updates)
@@ -218,6 +242,15 @@ export async function updateAppointment(id, updates) {
     .select()
   if (error) throw error
   if (!data || data.length === 0) throw new Error('Update failed.')
+
+  if (before && before.status !== 'cancelled' && before.job_id) {
+    const profile = await getCurrentProfile().catch(() => null)
+    const when = before.scheduled_start
+      ? new Date(before.scheduled_start).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })
+      : 'unscheduled'
+    await logActivity(before.job_id, 'appointment_cancelled', `Appointment on ${when} cancelled by ${profile?.full_name || 'admin'}`).catch(() => {})
+    await notifyAppointmentCancelled((before.appointment_assignments || []).map(a => a.technician_id), before.job_id, when)
+  }
 }
 
 // Only touches what changed: removed technicians lose their assignment (so
