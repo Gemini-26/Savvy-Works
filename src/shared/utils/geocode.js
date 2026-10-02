@@ -86,3 +86,43 @@ export function reverseGeocode(lat, lng) {
 
   return queue
 }
+
+// Site addresses are typed free-form ("Unit 62, Village Lane, Steyn City
+// Estate, Midrand, …") and OpenStreetMap often can't match the full street
+// line, especially inside estates. Tidy the address, then try progressively
+// looser versions and keep the first that resolves.
+function addressCandidates(address) {
+  const seen = new Set()
+  const segs = String(address)
+    .split(/[\n,]+/)
+    .map(s => s.trim())
+    .filter(s => s && !/^\d{4}$/.test(s)) // postcodes confuse the search
+    .map(s => s.replace(/\b(estate|complex)\b/gi, '').replace(/\s+/g, ' ').trim())
+    .filter(s => {
+      const k = s.toLowerCase()
+      if (!k || seen.has(k)) return false // city/province repeated by the form
+      seen.add(k)
+      return true
+    })
+    .filter(s => !/^(unit|flat|apt|apartment|no\.?|house|erf|stand)\s*\d+\w*$/i.test(s) && !/^\d+\w?$/.test(s))
+
+  const out = []
+  for (let i = 0; i < segs.length - 1 || i === 0; i++) {
+    const rest = segs.slice(i)
+    out.push(rest.join(', '))
+    // Drop the city between the street/estate and the province.
+    if (rest.length > 3) out.push([...rest.slice(0, 2), rest[rest.length - 1]].join(', '))
+    if (rest.length <= 2) break
+  }
+  return [...new Set(out.filter(Boolean))]
+}
+
+// Resolves to { lat, lng } for the site address, falling back to a nearby
+// match (estate, suburb) when the exact address isn't mapped; null if none.
+export async function geocodeSiteAddress(address) {
+  for (const candidate of addressCandidates(address)) {
+    const point = await geocodeAddress(candidate)
+    if (point) return point
+  }
+  return null
+}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { geocodeAddress } from '../../../shared/utils/geocode'
+import { geocodeSiteAddress } from '../../../shared/utils/geocode'
 
 const techIcon = L.divIcon({
   className: '',
@@ -36,7 +36,7 @@ function useGeocodedSites(addresses) {
   useEffect(() => {
     addresses.forEach(async (address) => {
       if (points[address] !== undefined) return
-      const point = await geocodeAddress(address)
+      const point = await geocodeSiteAddress(address)
       setPoints(prev => (prev[address] !== undefined ? prev : { ...prev, [address]: point }))
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
