@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
+import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
 import { fetchAppointmentsForDay } from '../services/appointmentService'
 import AppointmentModal from '../components/AppointmentModal'
 import AppointmentPreviewModal from '../components/AppointmentPreviewModal'
@@ -163,10 +164,18 @@ export default function TimePlannerPage() {
   const [error,         setError]         = useState(null)
   const [modal,         setModal]         = useState(null)  // null | { mode, appt?, techId?, startHour? }
   const [preview,       setPreview]       = useState(null)  // null | appointment being previewed
+  const [updatedAt,     setUpdatedAt]     = useState(null)
   const { profiles }                      = useProfiles()
   const scrollRef                         = useRef(null)
+  const reqRef                            = useRef(0)       // latest request id — stale responses are dropped
+  const busyRef                           = useRef(false)
 
   useEffect(() => { load() }, [date])
+
+  // Every admin plans off this board, so a job booked by someone else has to
+  // show up without a manual refresh — otherwise two admins double-book the
+  // same technician. Re-fetch on a short timer and whenever the tab regains focus.
+  useRefreshOnFocus(() => load(true), 20_000)
 
   // Scroll to 07:00 on load
   useEffect(() => {
@@ -175,16 +184,30 @@ export default function TimePlannerPage() {
     }
   }, [loading])
 
-  async function load() {
-    setLoading(true)
-    setError(null)
+  // `quiet` refreshes (the timer / tab focus) skip the spinner so the grid and
+  // its scroll position don't jump, and never throw away what's on screen if a
+  // single poll fails.
+  async function load(quiet = false) {
+    if (quiet && busyRef.current) return
+    const req = ++reqRef.current
+    busyRef.current = true
+    if (!quiet) {
+      setLoading(true)
+      setError(null)
+    }
     try {
       const data = await fetchAppointmentsForDay(date)
+      if (req !== reqRef.current) return
       setAppointments(data)
+      setUpdatedAt(new Date())
+      setError(null)
     } catch (err) {
-      setError(err.message || 'Failed to load appointments')
+      if (req === reqRef.current && !quiet) setError(err.message || 'Failed to load appointments')
     } finally {
-      setLoading(false)
+      if (req === reqRef.current) {
+        busyRef.current = false
+        setLoading(false)
+      }
     }
   }
 
@@ -268,7 +291,7 @@ export default function TimePlannerPage() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={load}
+            onClick={() => load()}
             className="w-8 h-8 flex items-center justify-center rounded border border-gray-300 text-gray-500 hover:bg-gray-50 transition-colors"
             title="Refresh"
           >
@@ -385,6 +408,7 @@ export default function TimePlannerPage() {
       {!loading && (
         <p className="text-xs text-gray-400">
           {appointments.length} appointment{appointments.length !== 1 ? 's' : ''} on this day
+          {updatedAt && ` · updated ${updatedAt.toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`}
         </p>
       )}
 
@@ -405,7 +429,7 @@ export default function TimePlannerPage() {
           presetStartHour={modal.startHour ?? 9}
           presetTechId={modal.techId ?? null}
           onClose={() => setModal(null)}
-          onSaved={load}
+          onSaved={() => load()}
         />
       )}
 
