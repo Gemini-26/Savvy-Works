@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import NotificationBell from '../shared/components/NotificationBell'
 import ClockBubble from '../shared/components/ClockBubble'
+import { useCurrentUser } from '../hooks/useCurrentUser'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Full navigation structure — mirrors menu.txt
@@ -374,6 +375,8 @@ export default function Layout() {
 
   const navigate = useNavigate()
   const location = useLocation()
+  const { profile } = useCurrentUser()
+  const initial = profile?.full_name?.trim().charAt(0).toUpperCase() || '?'
 
   // Close everything on route change
   useEffect(() => {
@@ -469,7 +472,7 @@ export default function Layout() {
               onClick={openUserMenu}
               className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 transition-colors"
             >
-              <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs">A</div>
+              <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs">{initial}</div>
               <ChevronDown size={12} className={`transition-transform ${userOpen ? 'rotate-180' : ''}`}/>
             </button>
           </div>

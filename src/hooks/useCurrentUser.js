@@ -4,14 +4,16 @@ import { getCurrentProfile, onSessionChange } from '../services/authService'
 export function useCurrentUser() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [failed, setFailed] = useState(false)
   const lastUserId = useRef(undefined)
 
   useEffect(() => {
     function load() {
       setLoading(true)
+      setFailed(false)
       getCurrentProfile()
         .then(setProfile)
-        .catch(() => setProfile(null))
+        .catch(() => { setProfile(null); setFailed(true) })
         .finally(() => setLoading(false))
     }
 
@@ -29,5 +31,5 @@ export function useCurrentUser() {
     return () => subscription.unsubscribe()
   }, [])
 
-  return { profile, loading, isAdmin: profile?.role === 'admin' }
+  return { profile, loading, failed, isAdmin: profile?.role === 'admin' }
 }

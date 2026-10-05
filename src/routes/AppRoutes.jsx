@@ -12,10 +12,11 @@ import MySchedulePage from '../modules/technician/pages/MySchedulePage'
 import ProfilePage from '../modules/technician/pages/ProfilePage'
 import MyToolsPage from '../modules/technician/pages/MyToolsPage'
 import MyProfilePage from '../modules/users/pages/MyProfilePage'
+import NoProfileScreen from '../components/NoProfileScreen'
 
 export default function AppRoutes({ session }) {
   const routes = generateModuleRoutes()
-  const { profile, loading } = useCurrentUser()
+  const { profile, loading, failed } = useCurrentUser()
 
   if (session && loading) {
     return (
@@ -23,6 +24,12 @@ export default function AppRoutes({ session }) {
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     )
+  }
+
+  // Signed in, but the login has no staff profile: every company table would
+  // come back empty, so say why instead of rendering the app with no data.
+  if (session && !profile) {
+    return <NoProfileScreen email={session.user?.email} failed={failed} />
   }
 
   const isTechnician = session && profile?.role === 'technician'
