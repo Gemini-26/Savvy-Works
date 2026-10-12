@@ -45,7 +45,7 @@ const INVOICE_FILTERS = {
 export async function fetchInvoices(statusFilter, page = 0, search = '', filters = {}) {
   let query = supabase
     .from('invoices')
-    .select(`*, customers(customer_name), jobs(${JOB_ASSIGNEES_SELECT})`, { count: 'exact' })
+    .select(`*, customers(customer_name), jobs(job_ref, archived_at, ${JOB_ASSIGNEES_SELECT})`, { count: 'exact' })
     .order('created_at', { ascending: false })
     .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
 
@@ -87,11 +87,26 @@ export function buildPayfastPaymentLink({ process_url, fields }) {
   return `${process_url}?${query}`
 }
 
+// A draft invoice is one nobody has been sent yet. The moment a payment link is
+// handed to the customer it becomes outstanding — the technician's on-site flow
+// does the same. Conditional on 'draft' so it can never drag a paid or overdue
+// invoice back, and safe to call more than once.
+export async function markInvoiceSent(invoiceId) {
+  const { error } = await supabase
+    .from('invoices')
+    .update({ status: 'outstanding' })
+    .eq('id', invoiceId)
+    .eq('status', 'draft')
+  if (error) throw error
+}
+
 export async function findInvoiceForJob(jobId) {
   const { data, error } = await supabase
     .from('invoices')
-    .select('id, invoice_number')
+    .select('id, invoice_number, status')
     .eq('job_id', jobId)
+    .order('created_at', { ascending: true })
+    .limit(1)
     .maybeSingle()
   if (error) throw error
   return data
@@ -100,7 +115,7 @@ export async function findInvoiceForJob(jobId) {
 export async function fetchInvoice(id) {
   const { data, error } = await supabase
     .from('invoices')
-    .select('*, customers(customer_name, email, telephone, mobile), invoice_items(*), jobs(job_ref, title)')
+    .select('*, customers(customer_name, email, telephone, mobile), invoice_items(*), jobs(job_ref, title, payment_type, quote_id, archived_at)')
     .eq('id', id)
     .maybeSingle()
 
@@ -150,7 +165,10 @@ export async function createInvoice(invoice, items) {
   return newInvoice
 }
 
-export async function updateInvoice(id, updates, items) {
+// `syncJob` also writes the lines to the invoice's job as its Materials, for edits
+// made on the invoice side — what has been billed must show on the job too. Empty
+// lists are never mirrored: clearing an invoice must not wipe the job's Materials.
+export async function updateInvoice(id, updates, items, { syncJob = false } = {}) {
   const totals = items ? calculateTotals(items) : {}
 
   const { data, error } = await supabase
@@ -163,6 +181,9 @@ export async function updateInvoice(id, updates, items) {
   if (!data || data.length === 0) throw new Error('Update failed — no rows were changed. Check your permissions.')
 
   if (items) await replaceLineItems('invoice_items', 'invoice_id', id, items)
+  if (items?.length > 0 && syncJob && data[0].job_id) {
+    await replaceLineItems('job_items', 'job_id', data[0].job_id, items)
+  }
 }
 
 export async function deleteInvoice(id) {
@@ -174,8 +195,85 @@ export async function deleteInvoice(id) {
   if (error) throw error
 }
 
+// The line items a job should bill: its Materials tab, or — for jobs converted
+// before job_items existed — the quote it came from.
+async function jobBillableItems(job, { fallbackToQuote = true } = {}) {
+  const { data: jobItems, error: jobItemsError } = await supabase
+    .from('job_items')
+    .select('item_id, description, quantity, unit, unit_price, tax_rate')
+    .eq('job_id', job.id)
+    .order('sort_order')
+  if (jobItemsError) throw jobItemsError
+
+  if (jobItems?.length > 0 || !job.quote_id || !fallbackToQuote) return jobItems || []
+
+  const { data: quoteItems, error } = await supabase
+    .from('quote_items')
+    .select('item_id, description, quantity, unit, unit_price, tax_rate')
+    .eq('quote_id', job.quote_id)
+    .order('sort_order')
+  if (error) throw error
+  return quoteItems || []
+}
+
+// Puts the job's Materials onto an invoice that has no line items yet. Returns
+// how many lines were added. An invoice that already has lines is left alone —
+// it may have been edited by hand, or already shared with the customer.
+export async function fillInvoiceFromJob(invoiceId, job) {
+  const { count, error: countError } = await supabase
+    .from('invoice_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('invoice_id', invoiceId)
+  if (countError) throw countError
+  if (count > 0) return 0
+
+  const items = await jobBillableItems(job)
+  if (items.length > 0) await updateInvoice(invoiceId, {}, items)
+  return items.length
+}
+
+// Replaces a draft invoice's lines with the job's current Materials. Only ever
+// for drafts: once a payment link is out the amount is fixed, and changing the
+// lines under it would leave the customer paying a different total from the one
+// on the invoice.
+export async function refreshDraftInvoiceFromJob(invoiceId, job) {
+  const { data: invoice, error } = await supabase
+    .from('invoices').select('status').eq('id', invoiceId).maybeSingle()
+  if (error) throw error
+  if (invoice?.status !== 'draft') throw new Error('Only a draft invoice can be refreshed from the job.')
+
+  const items = await jobBillableItems(job)
+  if (items.length === 0) throw new Error('This job has no Materials saved yet — add them on the job’s Materials tab first.')
+  await updateInvoice(invoiceId, {}, items)
+  return items.length
+}
+
+// Run after the job's Materials are saved: a draft invoice follows them
+// automatically, so the two can't drift apart before anything is sent. An
+// invoice that has already gone out is left exactly as it is — the customer has
+// a payment link for that amount. Reports what happened so the page can say so.
+export async function syncInvoiceToMaterials(job) {
+  const invoice = await findInvoiceForJob(job.id)
+  if (!invoice) return { state: 'none' }
+  if (invoice.status !== 'draft') return { state: 'locked', invoice }
+
+  // Materials only: if they were cleared on purpose, don't fall back to the quote.
+  const items = await jobBillableItems(job, { fallbackToQuote: false })
+  if (items.length === 0) return { state: 'empty', invoice }
+  await updateInvoice(invoice.id, {}, items)
+  return { state: 'synced', invoice }
+}
+
+// A charge added on the spot (the technician's "Add Charge & Generate Link")
+// goes onto the job's Materials as well as the invoice, appended to whatever the
+// job already has, so the Materials tab shows everything that was billed.
+export async function addChargeToJobInvoice(invoiceId, job, charge) {
+  const items = [...await jobBillableItems(job), charge]
+  await updateInvoice(invoiceId, { status: 'outstanding' }, items, { syncJob: true })
+}
+
 // Creates an invoice from a completed job, carrying over the customer/site/title
-// and, if the job came from a quote, that quote's line items.
+// and the job's Materials (or, for older jobs, the quote's line items).
 //
 // Uses the find_or_create_draft_invoice() RPC (migration 018) instead of a plain
 // find-then-insert: two technicians (or a double-tap on a slow connection)
@@ -184,6 +282,15 @@ export async function deleteInvoice(id) {
 // Postgres advisory lock keyed on the job id, so the second caller waits and
 // then gets back the first caller's row instead of creating a duplicate.
 export async function createInvoiceFromJob(job) {
+  const existing = await findInvoiceForJob(job.id)
+  if (existing) {
+    // An invoice can already exist with nothing on it — e.g. a payment link was
+    // attempted before any Materials were saved — so top it up rather than
+    // handing back an empty invoice.
+    await fillInvoiceFromJob(existing.id, job)
+    return existing
+  }
+
   const invoice_ref = await nextInvoiceNumber()
   const issueDate = new Date().toISOString().split('T')[0]
 
@@ -202,40 +309,9 @@ export async function createInvoiceFromJob(job) {
   })
   if (rpcError) throw rpcError
 
-  // invoice_items is only empty on a genuinely fresh invoice — an invoice the
-  // RPC found (rather than created) may already be fully formed, and must not
-  // have its line items duplicated.
-  const { count: existingItemCount, error: countError } = await supabase
-    .from('invoice_items')
-    .select('id', { count: 'exact', head: true })
-    .eq('invoice_id', invoice.id)
-  if (countError) throw countError
-
-  if (existingItemCount === 0) {
-    const { data: jobItems, error: jobItemsError } = await supabase
-      .from('job_items')
-      .select('item_id, description, quantity, unit, unit_price, tax_rate')
-      .eq('job_id', job.id)
-      .order('sort_order')
-    if (jobItemsError) throw jobItemsError
-
-    let items = jobItems || []
-
-    // Fallback for jobs converted before job_items existed / weren't backfilled
-    if (items.length === 0 && job.quote_id) {
-      const { data: quoteItems, error } = await supabase
-        .from('quote_items')
-        .select('item_id, description, quantity, unit, unit_price, tax_rate')
-        .eq('quote_id', job.quote_id)
-        .order('sort_order')
-      if (error) throw error
-      items = quoteItems || []
-    }
-
-    if (items.length > 0) {
-      await updateInvoice(invoice.id, {}, items)
-    }
-  }
+  // The RPC may have found an invoice rather than created one, so this only
+  // fills it if it is still empty — it never duplicates existing lines.
+  await fillInvoiceFromJob(invoice.id, job)
 
   return invoice
 }

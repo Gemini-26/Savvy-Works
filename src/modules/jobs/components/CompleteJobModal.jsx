@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { completeJob, fetchJobForPayment } from '../services/jobService'
-import { findInvoiceForJob, createInvoiceFromJob, updateInvoice, createPayfastPayment, buildPayfastPaymentLink, logInvoiceEvent } from '../../finance/services/invoiceService'
+import { findInvoiceForJob, createInvoiceFromJob, updateInvoice, addChargeToJobInvoice, createPayfastPayment, buildPayfastPaymentLink, logInvoiceEvent } from '../../finance/services/invoiceService'
 import { buildWhatsappLink } from '../../../shared/utils/whatsapp'
 import SignaturePad from '../../../shared/components/SignaturePad'
 import { PAYMENT_TYPES } from '../../../shared/constants/paymentTypes'
@@ -93,10 +93,11 @@ export default function CompleteJobModal({ jobId, signOffName, onClose, onComple
         invoiceId = invoice.id
         setLinkInvoiceId(invoiceId)
       }
-      await updateInvoice(invoiceId, { status: 'outstanding' }, [{
+      // Lands on the job's Materials as well as the invoice, so the two agree.
+      await addChargeToJobInvoice(invoiceId, job, {
         description: chargeDescription.trim(), quantity: 1, unit: 'each',
         unit_price: Number(chargeAmount), tax_rate: 15,
-      }])
+      })
       await generateLinkForInvoice(invoiceId)
       setShowAddCharge(false)
     } catch (err) {

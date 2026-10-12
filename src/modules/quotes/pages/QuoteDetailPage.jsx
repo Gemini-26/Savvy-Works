@@ -8,6 +8,7 @@ import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { useItems } from '../hooks/useItems'
 import LineItemsEditor from '../components/LineItemsEditor'
 import { downloadQuotePdf, previewQuotePdf } from '../utils/quotePdf'
+import { buildWhatsappLink } from '../../../shared/utils/whatsapp'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
 
@@ -130,6 +131,24 @@ export default function QuoteDetailPage() {
     }
   }
 
+  // wa.me can only carry text, not the PDF — the message summarises the quote and
+  // the PDF can be attached from Download PDF if the customer wants the document.
+  // window.open runs before any await so the browser doesn't block it as a popup.
+  async function handleSendWhatsapp() {
+    const phone = form.customers?.mobile || form.customers?.telephone || ''
+    const message = `Hi ${form.customers?.customer_name || ''}, here is your quote ${form.quote_ref || ''}${form.title ? ` for ${form.title}` : ''} — total ${formatCurrency(form.total)}${form.valid_until ? `, valid until ${formatDate(form.valid_until)}` : ''}. Reply here to accept it and we’ll book the work in.`
+    window.open(buildWhatsappLink(phone, message), '_blank', 'noopener')
+
+    if (form.status !== 'draft') return
+    setError(null)
+    try {
+      await updateQuote(id, { status: 'sent' })
+      set('status', 'sent')
+    } catch (err) {
+      setError(err.message || 'Sent, but could not mark the quote as Sent')
+    }
+  }
+
   async function handlePreviewPdf() {
     setPreviewingPdf(true)
     try {
@@ -188,6 +207,13 @@ export default function QuoteDetailPage() {
                 className="bg-gray-700 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-gray-800 transition-colors">
                 ⬇ Download PDF
               </button>
+              {['draft', 'sent', 'actioned'].includes(form.status) && (
+                <button type="button" onClick={handleSendWhatsapp}
+                  title={form.customers?.mobile || form.customers?.telephone ? 'Opens WhatsApp with the quote summary to the customer' : 'No mobile number on file — you’ll pick the contact in WhatsApp'}
+                  className="bg-[#25D366] text-white px-4 py-2 rounded text-sm font-semibold hover:opacity-90 transition-colors">
+                  📲 Send via WhatsApp
+                </button>
+              )}
             </Fragment>
           )}
           <button type="button" onClick={() => navigate(-1)}

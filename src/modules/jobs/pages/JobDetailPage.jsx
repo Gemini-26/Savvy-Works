@@ -18,7 +18,7 @@ import { setAssignmentTeamMembers } from '../../users/services/teamMembersServic
 import PhotoPicker from '../../../shared/components/PhotoPicker'
 import { PAUSED_STATUSES } from '../../../shared/constants/appointmentStatuses'
 import { normalizePhone } from '../../../shared/utils/phone'
-import { createInvoiceFromJob, findInvoiceForJob } from '../../finance/services/invoiceService'
+import { createInvoiceFromJob, findInvoiceForJob, syncInvoiceToMaterials } from '../../finance/services/invoiceService'
 import { fetchJobActivity } from '../../../shared/services/activityService'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 import { formatDateTime } from '../../../shared/utils/formatDate'
@@ -141,6 +141,8 @@ export default function JobDetailPage() {
   const [completeModal, setCompleteModal] = useState(false)
   const [invoicing,     setInvoicing]     = useState(false)
   const [existingInvoice, setExistingInvoice] = useState(null)
+  // The job's invoice, if one exists — turns "Create Invoice" into "View Invoice".
+  const [linkedInvoice, setLinkedInvoice] = useState(null)
   const [confirming,    setConfirming]    = useState(false)
   const [photos,        setPhotos]        = useState([])
   const [photosLoading, setPhotosLoading] = useState(false)
@@ -154,11 +156,14 @@ export default function JobDetailPage() {
   const [itemsLoading,  setItemsLoading]  = useState(false)
   const [itemsSaving,   setItemsSaving]   = useState(false)
   const [itemsDirty,    setItemsDirty]    = useState(false)
+  // What saving the Materials did to the job's invoice, shown under the editor.
+  const [itemsNotice,   setItemsNotice]   = useState(null)
 
   useEffect(() => {
     fetchJob(id)
       .then(data => { setForm(dbToForm(data)); setLoading(false) })
       .catch(err  => { setError(err.message || 'Failed to load job'); setLoading(false) })
+    findInvoiceForJob(id).then(setLinkedInvoice).catch(() => setLinkedInvoice(null))
   }, [id])
 
   // Jobs created before site locations existed (and ones converted from a lead
@@ -205,13 +210,19 @@ export default function JobDetailPage() {
   function handleJobItemsChange(next) {
     setJobItems(next)
     setItemsDirty(true)
+    setItemsNotice(null)
   }
 
   async function handleSaveJobItems() {
     setItemsSaving(true)
+    setItemsNotice(null)
     try {
       await updateJobItems(id, jobItems)
       setItemsDirty(false)
+      // A draft invoice follows the Materials; one already sent is left alone.
+      const { state, invoice } = await syncInvoiceToMaterials({ id, quote_id: form.quote_id })
+      if (state === 'synced') setItemsNotice({ tone: 'ok', text: `Saved. Draft invoice ${invoice.invoice_number} was updated to match.` })
+      if (state === 'locked') setItemsNotice({ tone: 'warn', text: `Saved. Invoice ${invoice.invoice_number} has already been sent, so it was not changed — edit the invoice itself if the customer’s amount needs to change.` })
     } catch (err) {
       setError(err.message || 'Failed to save materials')
     } finally {
@@ -378,14 +389,22 @@ export default function JobDetailPage() {
     setInvoicing(true)
     setError(null)
     try {
+      // Materials edited on the tab but not yet saved would otherwise be left
+      // off the invoice, which bills whatever is saved on the job.
+      if (itemsDirty) {
+        await updateJobItems(id, jobItems)
+        setItemsDirty(false)
+      }
       const existing = await findInvoiceForJob(id)
       if (existing) {
+        // createInvoiceFromJob tops up an invoice that has no lines yet.
+        await createInvoiceFromJob({ id, ...form })
         setExistingInvoice(existing)
         setInvoicing(false)
         return
       }
       const invoice = await createInvoiceFromJob({ id, ...form })
-      navigate(`/finance/invoices/${invoice.id}`)
+      navigate(`/finance/invoices/${invoice.id}`, { state: { justCreated: true } })
     } catch (err) {
       setError(err.message || 'Failed to create invoice')
       setInvoicing(false)
@@ -542,7 +561,13 @@ export default function JobDetailPage() {
               {confirming ? 'Confirming…' : '✔ Confirm Complete'}
             </button>
           )}
-          {!editing && statusKey === 'completed' && (
+          {!editing && linkedInvoice && (
+            <button type="button" onClick={() => navigate(`/finance/invoices/${linkedInvoice.id}`)}
+              className="flex items-center gap-1.5 bg-teal-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-teal-700 transition-colors">
+              📄 View Invoice
+            </button>
+          )}
+          {!editing && !linkedInvoice && statusKey === 'completed' && (
             <button type="button" onClick={handleCreateInvoice} disabled={invoicing}
               className="flex items-center gap-1.5 bg-teal-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-teal-700 disabled:opacity-50 transition-colors">
               {invoicing ? 'Creating…' : '➜ Create Invoice'}
@@ -594,6 +619,11 @@ export default function JobDetailPage() {
             <>
               <LineItemsEditor items={jobItems} catalogue={catalogue} onChange={handleJobItemsChange}
                 onCatalogueItemCreated={reloadCatalogue} />
+              {itemsNotice && (
+                <p className={`mt-3 text-sm px-3 py-2 rounded border ${itemsNotice.tone === 'ok' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                  {itemsNotice.text}
+                </p>
+              )}
               <div className="flex justify-end mt-4">
                 <button type="button" onClick={handleSaveJobItems} disabled={!itemsDirty || itemsSaving}
                   className="bg-blue-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">

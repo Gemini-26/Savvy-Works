@@ -1,9 +1,10 @@
-import { useState, useEffect, Fragment } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useState, useEffect, useRef, Fragment } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import {
   fetchInvoice, updateInvoice, deleteInvoice, createPayfastPayment, buildPayfastPaymentLink,
   fetchInvoiceEvents, logInvoiceEvent, markInvoiceRefunded, markInvoiceDisputed, sendInvoiceReceiptEmail,
+  markInvoiceSent, refreshDraftInvoiceFromJob,
 } from '../services/invoiceService'
 import { buildWhatsappLink } from '../../../shared/utils/whatsapp'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
@@ -67,6 +68,12 @@ const EVENT_LABELS = {
 
 const inputCls = 'w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white'
 
+// A comparable fingerprint of a set of lines, to tell whether an edit actually
+// changed them (as opposed to just the title, notes, dates…).
+const linesKey = items => JSON.stringify(items.map(i => [
+  i.item_id || '', i.description || '', Number(i.quantity) || 0, i.unit || '', Number(i.unit_price) || 0, Number(i.tax_rate) || 0,
+]))
+
 function Field({ label, children }) {
   return (
     <div className="flex items-start gap-3">
@@ -79,9 +86,17 @@ function Field({ label, children }) {
 export default function InvoiceDetailPage() {
   const { id }   = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const { customers } = useCustomers()
   const { items: catalogue } = useItems()
 
+  // Set by the job page's "Create Invoice" so the admin lands here knowing
+  // the Materials came across and that previewing/sending is the next step.
+  const [justCreated,   setJustCreated]   = useState(!!location.state?.justCreated)
+  const [paymentLink,   setPaymentLink]   = useState(null)
+  const [linkCopied,    setLinkCopied]    = useState(false)
+  const [copying,       setCopying]       = useState(false)
+  const [confirmRefresh, setConfirmRefresh] = useState(false)
   const [editing,       setEditing]       = useState(false)
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
@@ -98,6 +113,8 @@ export default function InvoiceDetailPage() {
   const [showRefund,    setShowRefund]    = useState(false)
   const [refundReason,  setRefundReason]  = useState('')
   const [actionBusy,    setActionBusy]    = useState(false)
+  // Fingerprint of the lines as last loaded, to spot whether a save changed them.
+  const loadedLines = useRef('[]')
 
   useEffect(() => {
     load()
@@ -108,10 +125,12 @@ export default function InvoiceDetailPage() {
     fetchInvoice(id)
       .then(data => {
         setForm(data)
-        setLineItems((data.invoice_items || []).map(li => ({
+        const lines = (data.invoice_items || []).map(li => ({
           item_id: li.item_id || '', description: li.description,
           quantity: li.quantity, unit: li.unit, unit_price: li.unit_price, tax_rate: li.tax_rate,
-        })))
+        }))
+        loadedLines.current = linesKey(lines)
+        setLineItems(lines)
         setLoading(false)
         if (data.job_id) {
           fetchJobTechnicianSummary(data.job_id).then(setTechnicians).catch(() => setTechnicians([]))
@@ -162,7 +181,10 @@ export default function InvoiceDetailPage() {
         terms:         form.terms         || null,
         payment_method: form.payfast_payment_id ? 'PayFast' : (form.payment_method || null),
         ...paymentFields,
-      }, lineItems)
+      }, lineItems, {
+        // Lines changed here also become the job's Materials, so they match.
+        syncJob: linesKey(lineItems) !== loadedLines.current,
+      })
 
       if (paymentFields.payment_status) {
         await logInvoiceEvent(id, 'payment_completed', `Marked paid manually via ${form.payment_method || 'unrecorded method'}`)
@@ -213,21 +235,67 @@ export default function InvoiceDetailPage() {
     }
   }
 
+  // A fresh PayFast link for this invoice. Handing one to the customer is what
+  // makes a draft a live invoice, so a draft becomes Outstanding here — after the
+  // link exists, so a failed attempt (e.g. nothing priced yet) leaves it a draft.
+  async function generatePaymentLink() {
+    const payment = await createPayfastPayment(id)
+    const link = buildPayfastPaymentLink(payment)
+    if (form.status === 'draft') {
+      await markInvoiceSent(id)
+      setForm(prev => ({ ...prev, status: 'outstanding' }))
+    }
+    return link
+  }
+
+  const customerPhone = form?.customers?.mobile || form?.customers?.telephone || ''
+
   async function handleSendWhatsapp() {
     setSending(true)
     setError(null)
     try {
-      const payment = await createPayfastPayment(id)
-      const link = buildPayfastPaymentLink(payment)
-      const phone = form.customers?.mobile || form.customers?.telephone || ''
-      const message = `Hi ${form.customers?.customer_name || ''}, here is your payment link for ${form.title || form.invoice_ref}: ${link}`
-      window.open(buildWhatsappLink(phone, message), '_blank', 'noopener')
-      await logInvoiceEvent(id, 'link_sent_whatsapp', `Sent to ${phone || 'customer'}`)
+      const link = await generatePaymentLink()
+      setPaymentLink(link)
+      const message = `Hi ${form.customers?.customer_name || ''}, here is your invoice ${form.invoice_ref || ''}${form.title ? ` for ${form.title}` : ''} — total ${formatCurrency(form.total)}. You can pay securely online here: ${link}`
+      window.open(buildWhatsappLink(customerPhone, message), '_blank', 'noopener')
+      await logInvoiceEvent(id, 'link_sent_whatsapp', `Sent to ${customerPhone || 'customer'}`)
       fetchInvoiceEvents(id).then(setEvents).catch(() => {})
     } catch (err) {
       setError(err.message || 'Failed to create payment link')
     } finally {
       setSending(false)
+    }
+  }
+
+  async function handleCopyLink() {
+    setCopying(true)
+    setError(null)
+    setLinkCopied(false)
+    try {
+      const link = await generatePaymentLink()
+      setPaymentLink(link)
+      // Clipboard access can be refused (permissions, insecure context); the
+      // link is still shown in the box below to copy by hand.
+      await navigator.clipboard.writeText(link).then(() => setLinkCopied(true)).catch(() => {})
+      fetchInvoiceEvents(id).then(setEvents).catch(() => {})
+    } catch (err) {
+      setError(err.message || 'Failed to create payment link')
+    } finally {
+      setCopying(false)
+    }
+  }
+
+  async function handleRefreshFromJob() {
+    setActionBusy(true)
+    setError(null)
+    try {
+      await refreshDraftInvoiceFromJob(id, { id: form.job_id, quote_id: form.jobs?.quote_id })
+      setConfirmRefresh(false)
+      load()
+    } catch (err) {
+      setError(err.message || 'Failed to refresh from the job')
+    } finally {
+      setActionBusy(false)
     }
   }
 
@@ -326,10 +394,17 @@ export default function InvoiceDetailPage() {
                 ✏️ Edit
               </button>
               <button type="button" onClick={() => previewInvoicePdf(form, lineItems, technicians)}
-                title="View Invoice"
-                className="flex items-center justify-center bg-gray-100 text-gray-700 px-3 py-2 rounded text-sm font-semibold hover:bg-gray-200 transition-colors">
-                <Eye size={16} />
+                title="Opens the invoice as the customer will receive it"
+                className="flex items-center justify-center gap-1.5 bg-gray-100 text-gray-700 px-3 py-2 rounded text-sm font-semibold hover:bg-gray-200 transition-colors">
+                <Eye size={16} /> Preview Invoice
               </button>
+              {form.job_id && !form.jobs?.archived_at && (
+                <button type="button" onClick={() => navigate(`/jobs/${form.job_id}`)}
+                  title="Open the job this invoice was created from"
+                  className="bg-teal-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-teal-700 transition-colors">
+                  ↩ View Source Job
+                </button>
+              )}
               <button type="button" onClick={() => downloadInvoicePdf(form, lineItems, technicians)}
                 className="bg-gray-700 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-gray-800 transition-colors">
                 ⬇ Download PDF
@@ -361,23 +436,16 @@ export default function InvoiceDetailPage() {
             {form.payment_method}
           </span>
         )}
-        {form.job_id && (
-          <button onClick={() => navigate(`/jobs/${form.job_id}`)} className="text-xs text-teal-600 hover:underline">
-            ↩ Converted from Job {form.jobs?.job_ref || ''} →
-          </button>
-        )}
-        {form.payment_status !== 'paid' && form.status !== 'draft' && Number(form.total) > 0 && (
-          <div className="ml-auto flex gap-2">
-            <button type="button" onClick={handleSendWhatsapp} disabled={sending}
-              className="bg-[#25D366] text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-colors">
-              {sending ? 'Preparing…' : '📲 Send via WhatsApp'}
+        {form.job_id ? (
+          form.jobs?.archived_at ? (
+            <span className="text-xs text-gray-500">Source job {form.jobs?.job_ref || ''} has been deleted (see Archives)</span>
+          ) : (
+            <button onClick={() => navigate(`/jobs/${form.job_id}`)} className="text-xs text-teal-600 hover:underline">
+              ↩ Converted from Job {form.jobs?.job_ref || ''} →
             </button>
-            <button type="button" onClick={handlePreviewPayment} disabled={paying}
-              title="Opens the checkout page in a new tab, exactly as the customer will see it — this does not charge you."
-              className="bg-gray-100 text-gray-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-gray-200 disabled:opacity-50 transition-colors">
-              {paying ? 'Opening…' : '👁 Preview Payment Page'}
-            </button>
-          </div>
+          )
+        ) : (
+          <span className="text-xs text-gray-400">Manual invoice — not created from a job</span>
         )}
         {form.payment_status === 'paid' && (
           <div className="ml-auto flex gap-2">
@@ -401,6 +469,65 @@ export default function InvoiceDetailPage() {
           </div>
         )}
       </div>
+
+      {justCreated && (
+        <div className="bg-teal-50 border border-teal-200 text-teal-800 text-sm px-4 py-3 rounded mb-4 flex items-start justify-between gap-3">
+          <span>
+            ✅ Invoice created from this job’s Materials — {lineItems.length} line{lineItems.length === 1 ? '' : 's'}, {formatCurrency(form.total)} including tax.
+            Use <span className="font-semibold">Preview Invoice</span> to check it, then send it to the customer below.
+          </span>
+          <button type="button" onClick={() => setJustCreated(false)} className="text-teal-600 hover:text-teal-800 text-lg leading-none">×</button>
+        </div>
+      )}
+
+      {/* Send to customer — available for drafts too: an admin-created invoice
+          starts as a draft, and sending it is what makes it live. Hidden while
+          editing, since the link is built from the saved total, not unsaved lines. */}
+      {ro && form.payment_status !== 'paid' && !['paid', 'cancelled'].includes(form.status) && (
+        <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4 space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="mr-auto min-w-0">
+              <h2 className="text-sm font-bold text-gray-800">Send to customer</h2>
+              <p className="text-xs text-gray-500">
+                {form.status === 'draft' && 'This invoice is still a draft — sending a payment link marks it Outstanding. '}
+                {customerPhone
+                  ? `WhatsApp goes to ${customerPhone}.`
+                  : 'No mobile number on file — you’ll pick the contact in WhatsApp.'}
+                {form.jobs?.payment_type && ` Customer chose on site: ${form.jobs.payment_type}.`}
+              </p>
+            </div>
+            {Number(form.total) > 0 && (
+              <div className="flex gap-2 flex-wrap">
+                <button type="button" onClick={handleSendWhatsapp} disabled={sending || copying}
+                  className="bg-[#25D366] text-white px-4 py-1.5 rounded text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-colors">
+                  {sending ? 'Preparing…' : '📲 Send via WhatsApp'}
+                </button>
+                <button type="button" onClick={handleCopyLink} disabled={sending || copying}
+                  className="bg-blue-600 text-white px-4 py-1.5 rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                  {copying ? 'Generating…' : '🔗 Copy Payment Link'}
+                </button>
+                <button type="button" onClick={handlePreviewPayment} disabled={paying}
+                  title="Opens the checkout page in a new tab, exactly as the customer will see it. Don’t complete it — against the live PayFast gateway that takes a real payment."
+                  className="bg-gray-100 text-gray-700 px-4 py-1.5 rounded text-sm font-semibold hover:bg-gray-200 disabled:opacity-50 transition-colors">
+                  {paying ? 'Opening…' : '👁 Preview Payment Page'}
+                </button>
+              </div>
+            )}
+          </div>
+          {Number(form.total) <= 0 && (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded px-3 py-2">
+              This invoice has no priced items, so there is nothing to charge yet. Add line items with <span className="font-semibold">Edit</span>
+              {form.job_id && <>, or add them on the job’s Materials tab and use <span className="font-semibold">Refresh from job Materials</span> below</>}.
+            </p>
+          )}
+          {paymentLink && (
+            <div className="space-y-1">
+              <p className="text-xs text-gray-500">{linkCopied ? '✓ Copied to clipboard. Payment link:' : 'Payment link (copy it from here):'}</p>
+              <input readOnly value={paymentLink} onFocus={e => e.target.select()} className={`${inputCls} font-mono text-xs`} />
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded mb-4">
@@ -537,7 +664,30 @@ export default function InvoiceDetailPage() {
 
         {ro ? (
           <div className="bg-white rounded-xl border border-gray-200 p-5">
-            <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wider border-b border-gray-100 pb-2 mb-3">Line Items</h2>
+            <div className="flex items-center justify-between border-b border-gray-100 pb-2 mb-3 gap-3 flex-wrap">
+              <h2 className="text-sm font-bold text-blue-600 uppercase tracking-wider">Line Items</h2>
+              {form.status === 'draft' && form.job_id && (
+                confirmRefresh ? (
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-gray-600">Replace these lines with the job’s Materials?</span>
+                    <button type="button" onClick={handleRefreshFromJob} disabled={actionBusy}
+                      className="bg-amber-600 text-white px-3 py-1 rounded font-semibold hover:bg-amber-700 disabled:opacity-50 transition-colors">
+                      {actionBusy ? 'Refreshing…' : 'Yes, replace'}
+                    </button>
+                    <button type="button" onClick={() => setConfirmRefresh(false)}
+                      className="px-3 py-1 rounded border border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => setConfirmRefresh(true)}
+                    title="Use this if you changed the job’s Materials after creating the invoice"
+                    className="text-xs font-medium text-blue-600 hover:text-blue-800 border border-blue-200 hover:border-blue-400 px-3 py-1 rounded transition-colors">
+                    ↻ Refresh from job Materials
+                  </button>
+                )
+              )}
+            </div>
             {lineItems.length === 0 ? (
               <p className="text-sm text-gray-400 py-2">No line items.</p>
             ) : (

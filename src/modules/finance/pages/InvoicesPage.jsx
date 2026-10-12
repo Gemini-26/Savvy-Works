@@ -163,6 +163,7 @@ export default function InvoicesPage({ statusFilter }) {
             <thead>
               <tr className="text-xs font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-100">
                 <th className="text-left px-5 py-3">Invoice #</th>
+                <th className="text-left px-5 py-3">Job</th>
                 <th className="text-left px-5 py-3">Title</th>
                 <th className="text-left px-5 py-3">Customer</th>
                 <th className="text-left px-5 py-3">Assigned To</th>
@@ -181,6 +182,20 @@ export default function InvoicesPage({ statusFilter }) {
                   className="hover:bg-blue-50 transition-colors cursor-pointer"
                 >
                   <td className="px-5 py-3 font-mono text-xs text-gray-500">{inv.invoice_ref ?? '—'}</td>
+                  <td className="px-5 py-3 font-mono text-xs">
+                    {inv.job_id && inv.jobs && !inv.jobs.archived_at ? (
+                      <button
+                        type="button"
+                        title="View the job this invoice was created from"
+                        onClick={e => { e.stopPropagation(); navigate(`/jobs/${inv.job_id}`) }}
+                        className="text-teal-600 hover:underline"
+                      >
+                        {inv.jobs.job_ref ?? 'View job'}
+                      </button>
+                    ) : (
+                      <span className="text-gray-300" title={inv.job_id ? 'The source job has been deleted' : 'Manual invoice — no source job'}>—</span>
+                    )}
+                  </td>
                   <td className="px-5 py-3 font-medium text-gray-900">{inv.title ?? '—'}</td>
                   <td className="px-5 py-3 text-gray-600">{inv.customers?.customer_name ?? '—'}</td>
                   <AssigneesCell names={inv.assignees} emptyLabel={inv.job_id ? 'Unassigned' : null} />
