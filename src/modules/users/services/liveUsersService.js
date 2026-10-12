@@ -95,7 +95,7 @@ export async function fetchSiteVisits() {
     .from('appointments')
     .select(`
       id, status, scheduled_start, scheduled_end,
-      jobs(id, job_ref, title, archived_at, site_address, site_city, site_county, site_postcode),
+      jobs(id, job_ref, title, archived_at, site_address, site_city, site_county, site_postcode, site_lat, site_lng, site_radius_m),
       appointment_assignments(technician_id, actual_start, actual_end, profiles(id, full_name, color))
     `)
     .not('status', 'in', '(cancelled,completed,declined,invoiced)')
@@ -121,6 +121,10 @@ export async function fetchSiteVisits() {
         title: a.jobs.title ?? a.jobs.job_ref,
         ref: a.jobs.job_ref,
         location: siteAddress(a.jobs),
+        // The site's saved position and fence, when an admin or the address
+        // lookup has set one; otherwise the map falls back to geocoding.
+        point: a.jobs.site_lat != null && a.jobs.site_lng != null ? { lat: a.jobs.site_lat, lng: a.jobs.site_lng } : null,
+        radius: a.jobs.site_radius_m ?? null,
         scheduledStart: a.scheduled_start,
         scheduledEnd: a.scheduled_end,
         status: a.status,

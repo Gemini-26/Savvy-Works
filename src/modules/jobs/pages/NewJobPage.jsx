@@ -10,6 +10,9 @@ import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { CURRENCIES, DEFAULT_CURRENCY } from '../../../shared/constants/currencies'
 import { COUNTRIES, DEFAULT_COUNTRY } from '../../../shared/constants/countries'
 import { GAUTENG_REGIONS, SA_PROVINCES } from '../../../shared/constants/regions'
+import { BLANK_SITE_LOCATION } from '../../../shared/utils/siteLocation'
+import SiteLocationPicker from '../components/SiteLocationPicker'
+import SiteAddressInput from '../components/SiteAddressInput'
 
 const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent']
 const STATUSES    = ['Active', 'Inactive']
@@ -107,6 +110,7 @@ const BLANK_SITE = {
   site_postcode:      '',
   site_country:       DEFAULT_COUNTRY,
   site_notes:         '',
+  ...BLANK_SITE_LOCATION,
 }
 
 export default function NewJobPage() {
@@ -116,6 +120,8 @@ export default function NewJobPage() {
   const [error,     setError]     = useState(null)
   const [contacts,  setContacts]  = useState([])
   const [syncSite,  setSyncSite]  = useState(true)
+  // The last suggestion picked in the site Address box (see SiteAddressInput).
+  const [picked, setPicked] = useState(null)
 
   const BLANK_NEW_CUSTOMER = {
     customer_name: '', contact_name: '', customer_type: '',
@@ -568,9 +574,11 @@ export default function NewJobPage() {
               </Field>
 
               <Field label="Address" span>
-                <textarea rows={3} value={form.site_address}
-                  onChange={e => set('site_address', e.target.value)}
-                  placeholder="Site Address" readOnly={syncSite}
+                <SiteAddressInput
+                  value={form}
+                  onChange={patch => setForm(prev => ({ ...prev, ...patch }))}
+                  onPicked={setPicked}
+                  placeholder="Start typing the site address…" readOnly={syncSite}
                   className={(syncSite ? readonlyCls : inputCls) + ' resize-none'} />
               </Field>
 
@@ -605,6 +613,14 @@ export default function NewJobPage() {
                     {COUNTRIES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 )}
+              </Field>
+
+              <Field label="Map Location" span>
+                <SiteLocationPicker
+                  value={form}
+                  onChange={patch => setForm(prev => ({ ...prev, ...patch }))}
+                  picked={picked}
+                />
               </Field>
 
               <Field label="Notes" span>

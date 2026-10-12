@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup, Polyline, Circle } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { geocodeSiteAddress } from '../../../shared/utils/geocode'
@@ -58,13 +58,14 @@ function useGeocodedSites(addresses) {
 }
 
 export default function LiveUsersMap({ users, sites = [] }) {
-  const addresses = [...new Set(sites.map(v => v.location).filter(Boolean))]
+  // Sites with a saved position use it; only the rest need geocoding.
+  const addresses = [...new Set(sites.filter(v => !v.point).map(v => v.location).filter(Boolean))]
   const sitePoints = useGeocodedSites(addresses)
 
   const techMarkers = users.filter(u => u.lastLat != null && u.lastLng != null && u.lastLocationAgeMs < RECENT_MS)
   const siteMarkers = sites
-    .filter(v => v.location && sitePoints[v.location])
-    .map(v => ({ site: v, point: sitePoints[v.location] }))
+    .map(v => ({ site: v, point: v.point || (v.location && sitePoints[v.location]) }))
+    .filter(m => m.point)
 
   const allPoints = [
     ...techMarkers.map(u => [u.lastLat, u.lastLng]),
@@ -109,6 +110,14 @@ export default function LiveUsersMap({ users, sites = [] }) {
           ))}
           {routeLines.map(l => (
             <Polyline key={l.key} positions={[l.from, l.to]} pathOptions={{ color: l.color, weight: 3, dashArray: '8 8' }} />
+          ))}
+          {siteMarkers.filter(({ site }) => site.point && site.radius).map(({ site, point }) => (
+            <Circle
+              key={`fence-${site.id}`}
+              center={[point.lat, point.lng]}
+              radius={site.radius}
+              pathOptions={{ color: site.color, weight: 1.5, dashArray: '4 4', fillColor: site.color, fillOpacity: 0.07 }}
+            />
           ))}
           {siteMarkers.map(({ site, point }) => (
             <Marker key={`site-${site.id}`} position={[point.lat, point.lng]} icon={siteIcon(site.color, site.current, site.onRoute)}>

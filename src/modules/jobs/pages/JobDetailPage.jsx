@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchJob, updateJob, deleteJob, fetchJobPhotos, uploadJobPhotos, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument, confirmJobComplete, fetchJobItems, updateJobItems } from '../services/jobService'
@@ -8,6 +8,11 @@ import { PENDING_RESPONSE_STATUSES, updateAppointmentStatus } from '../../techni
 import AppointmentModal from '../../planner/components/AppointmentModal'
 import CompleteJobModal from '../components/CompleteJobModal'
 import EditClockTimesModal from '../components/EditClockTimesModal'
+import { DEFAULT_RADIUS_M } from '../../../shared/utils/siteLocation'
+import SiteLocationPicker from '../components/SiteLocationPicker'
+import SiteAddressInput from '../components/SiteAddressInput'
+import GeoCheckBadge from '../components/GeoCheckBadge'
+import { lookupSite } from '../../../shared/utils/siteLookup'
 import SelectTeamModal from '../../technician/components/SelectTeamModal'
 import { setAssignmentTeamMembers } from '../../users/services/teamMembersService'
 import PhotoPicker from '../../../shared/components/PhotoPicker'
@@ -59,6 +64,9 @@ const ACTIVITY_DOT_COLORS = {
   technician_declined:        'bg-red-500',
   clocked_in:                 'bg-purple-500',
   clocked_out:                'bg-purple-500',
+  clocked_in_flagged:         'bg-amber-500',
+  clocked_out_flagged:        'bg-amber-500',
+  location_flag_reviewed:     'bg-green-500',
   photo_uploaded:             'bg-teal-500',
   photo_deleted:              'bg-red-400',
   document_uploaded:          'bg-teal-500',
@@ -114,6 +122,8 @@ export default function JobDetailPage() {
   const { profiles } = useProfiles()
 
   const [editing,       setEditing]       = useState(false)
+  // The last suggestion picked in the site Address box (see SiteAddressInput).
+  const [picked,        setPicked]        = useState(null)
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
   const [deleting,      setDeleting]      = useState(false)
@@ -150,6 +160,29 @@ export default function JobDetailPage() {
       .then(data => { setForm(dbToForm(data)); setLoading(false) })
       .catch(err  => { setError(err.message || 'Failed to load job'); setLoading(false) })
   }, [id])
+
+  // Jobs created before site locations existed (and ones converted from a lead
+  // or quote) have an address but no coordinates. The first time an admin opens
+  // one, work the location out from the address and save it, so the clock-in
+  // check has something to measure against without anyone doing it by hand.
+  // Tried once per visit; an admin's own pin is never touched (it has coordinates).
+  const autoLocateTried = useRef(false)
+  useEffect(() => {
+    if (!isAdmin || !form || editing || autoLocateTried.current) return
+    if (form.site_lat != null || ['completed', 'invoiced', 'cancelled'].includes(toDbStatus(form.status))) return
+    const fields = { address: form.site_address, city: form.site_city, province: form.site_county, postcode: form.site_postcode }
+    if (!fields.address?.trim() && !fields.city?.trim()) return
+
+    autoLocateTried.current = true
+    lookupSite(fields)
+      .then(async found => {
+        if (!found) return
+        const location = { site_lat: found.lat, site_lng: found.lng, site_geo_source: found.exact ? 'address' : 'approx' }
+        await updateJob(id, location)
+        setForm(prev => (prev && prev.site_lat == null ? { ...prev, ...location } : prev))
+      })
+      .catch(() => {})
+  }, [isAdmin, form, editing, id])
 
   useEffect(() => {
     if (activeTab === 'Appointments') loadAppointments()
@@ -396,6 +429,10 @@ export default function JobDetailPage() {
       site_postcode:      d.site_postcode      ?? '',
       site_country:       d.site_country       ?? 'South Africa',
       site_notes:         d.site_notes         ?? '',
+      site_lat:           d.site_lat           ?? null,
+      site_lng:           d.site_lng           ?? null,
+      site_radius_m:      d.site_radius_m      ?? DEFAULT_RADIUS_M,
+      site_geo_source:    d.site_geo_source    ?? null,
       completion_notes:   d.completion_notes   ?? '',
       materials_used:     d.materials_used     ?? '',
       sign_off_name:      d.sign_off_name      ?? '',
@@ -667,6 +704,7 @@ export default function JobDetailPage() {
                                         {a.original_actual_start && ` · originally clocked in ${new Date(a.original_actual_start).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}`}
                                       </div>
                                     )}
+                                    <GeoCheckBadge assignment={a} isAdmin={isAdmin} onChanged={loadAppointments} />
                                     {isAdmin && (
                                       <button type="button" onClick={() => setEditingClock(a)}
                                         className="text-[11px] font-semibold text-blue-600 hover:text-blue-700">
@@ -995,7 +1033,11 @@ export default function JobDetailPage() {
               <Field label="Address">
                 {ro
                   ? <p className="py-1.5 text-sm text-gray-800 whitespace-pre-line">{form.site_address || '—'}</p>
-                  : <textarea rows={3} value={form.site_address} onChange={e => set('site_address', e.target.value)}
+                  : <SiteAddressInput
+                      value={form}
+                      onChange={patch => setForm(prev => ({ ...prev, ...patch }))}
+                      onPicked={setPicked}
+                      placeholder="Start typing the site address…"
                       className={`${inputCls} resize-none`} />
                 }
               </Field>
@@ -1028,6 +1070,15 @@ export default function JobDetailPage() {
                       {COUNTRIES.map(c => <option key={c}>{c}</option>)}
                     </select>
                 }
+              </Field>
+
+              <Field label="Map Location">
+                <SiteLocationPicker
+                  value={form}
+                  onChange={patch => setForm(prev => ({ ...prev, ...patch }))}
+                  picked={picked}
+                  readOnly={ro}
+                />
               </Field>
 
               <Field label="Site Notes">

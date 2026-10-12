@@ -1,7 +1,8 @@
 import { supabase } from '../../../lib/supabase'
 import { getCurrentProfile } from '../../../services/authService'
 import { logActivity } from '../../../shared/services/activityService'
-import { notifyUser } from '../../../shared/services/notificationService'
+import { notifyUser, notifyAdmins } from '../../../shared/services/notificationService'
+import { formatDistance } from '../../../shared/utils/geo'
 
 async function technicianNames(technicianIds) {
   if (!technicianIds.length) return []
@@ -116,34 +117,121 @@ export async function fetchJobTechnicianSummary(jobId) {
   )
 }
 
-async function logClockEvent(assignmentId, action, label) {
+// What the activity log says about where the clock event happened. Only the
+// interesting outcomes are spelled out; "inside" just gets the distance.
+function geoLogSuffix(geo) {
+  if (!geo) return ''
+  switch (geo.status) {
+    case 'inside':       return ` (${formatDistance(geo.distance)} from the site pin)`
+    case 'outside':      return ` — ${formatDistance(geo.distance)} from the site, outside the ${geo.fence} m fence`
+    case 'unverified':   return ` (${formatDistance(geo.distance)} from the site pin, which isn't confirmed yet)`
+    case 'no_gps':       return ' (location not shared)'
+    case 'low_accuracy': return ' (location too vague to check)'
+    default:             return ''
+  }
+}
+
+// `geo` is the database's verdict on the technician's position (or null when
+// nothing was checked). An 'outside' result becomes a flagged entry in the job's
+// activity log and a notification to the admins; it never stops the clock event.
+async function logClockEvent(assignmentId, action, label, geo) {
   const { data: assignment } = await supabase
     .from('appointment_assignments')
-    .select('appointments(job_id)')
+    .select('appointments(job_id, jobs(title, job_ref))')
     .eq('id', assignmentId)
     .maybeSingle()
   const jobId = assignment?.appointments?.job_id
   if (!jobId) return
   const profile = await getCurrentProfile().catch(() => null)
-  await logActivity(jobId, action, `${profile?.full_name || 'Technician'} ${label}`).catch(() => {})
+  const who = profile?.full_name || 'Technician'
+  const flagged = geo?.status === 'outside'
+
+  await logActivity(
+    jobId,
+    flagged ? `${action}_flagged` : action,
+    `${who} ${label}${geoLogSuffix(geo)}`,
+  ).catch(() => {})
+
+  if (flagged) {
+    const jobLabel = assignment.appointments.jobs?.title || assignment.appointments.jobs?.job_ref || 'a job'
+    await notifyAdmins({
+      title: action === 'clocked_in' ? 'Clocked in away from the job site' : 'Clocked out away from the job site',
+      body: `${who} ${label} ${formatDistance(geo.distance)} from "${jobLabel}" (the fence is ${geo.fence} m).`,
+      link: `/jobs/${jobId}`,
+    }).catch(() => {})
+  }
 }
 
-export async function clockInAssignment(assignmentId) {
-  const { error } = await supabase
+const GEO_FIELDS = prefix => `${prefix}_geo_status, ${prefix}_distance_m, ${prefix}_fence_m`
+const isMissingColumn = err => err?.code === '42703' || err?.code === 'PGRST204'
+
+// Records a clock-in ('start') or clock-out ('end') on an assignment, along
+// with the technician's GPS fix when there is one. The database compares the
+// fix with the job's site fence and stores the verdict; this returns it as
+// { status, distance, fence }, or null when it can't be read back.
+async function recordClock(assignmentId, prefix, fix) {
+  const clock = { [prefix === 'start' ? 'actual_start' : 'actual_end']: new Date().toISOString() }
+  const position = fix
+    ? { [`${prefix}_lat`]: fix.lat, [`${prefix}_lng`]: fix.lng, [`${prefix}_accuracy_m`]: fix.accuracy }
+    : {}
+
+  let { data, error } = await supabase
     .from('appointment_assignments')
-    .update({ actual_start: new Date().toISOString() })
+    .update({ ...clock, ...position })
     .eq('id', assignmentId)
+    .select(GEO_FIELDS(prefix))
+    .maybeSingle()
+
+  // The location columns arrive with a database migration. If this code is ever
+  // live before that has run, clocking in must still work — just unchecked.
+  if (error && isMissingColumn(error)) {
+    ;({ data, error } = await supabase
+      .from('appointment_assignments')
+      .update(clock)
+      .eq('id', assignmentId)
+      .select('id')
+      .maybeSingle())
+  }
   if (error) throw error
-  await logClockEvent(assignmentId, 'clocked_in', 'clocked in on site')
+
+  const status = data?.[`${prefix}_geo_status`]
+  if (!status) return null
+  return { status, distance: data[`${prefix}_distance_m`], fence: data[`${prefix}_fence_m`] }
 }
 
-export async function clockOutAssignment(assignmentId) {
-  const { error } = await supabase
+// `fix` is the technician's own phone position ({ lat, lng, accuracy }) — pass
+// it only when the technician is the one tapping the button. An admin clocking
+// someone in sends none, and the result is recorded as "admin entered".
+export async function clockInAssignment(assignmentId, { fix } = {}) {
+  const geo = await recordClock(assignmentId, 'start', fix)
+  await logClockEvent(assignmentId, 'clocked_in', 'clocked in on site', geo)
+  return geo
+}
+
+export async function clockOutAssignment(assignmentId, { fix } = {}) {
+  const geo = await recordClock(assignmentId, 'end', fix)
+  await logClockEvent(assignmentId, 'clocked_out', 'clocked out on site', geo)
+  return geo
+}
+
+// An admin acknowledging a flagged clock-in / clock-out, with an optional
+// explanation. The database stamps who and when; technicians can't set this.
+export async function reviewGeoFlag(assignmentId, note) {
+  const { data, error } = await supabase
     .from('appointment_assignments')
-    .update({ actual_end: new Date().toISOString() })
+    .update({ geo_reviewed_at: new Date().toISOString(), geo_review_note: note?.trim() || null })
     .eq('id', assignmentId)
+    .select('appointments(job_id), profiles(full_name)')
+    .maybeSingle()
   if (error) throw error
-  await logClockEvent(assignmentId, 'clocked_out', 'clocked out on site')
+  if (!data) throw new Error('Update failed — no rows were changed. Check your permissions.')
+
+  const jobId = data.appointments?.job_id
+  if (jobId) {
+    const profile = await getCurrentProfile().catch(() => null)
+    const detail = `${profile?.full_name || 'An admin'} reviewed the location flag for ${data.profiles?.full_name || 'a technician'}`
+    await logActivity(jobId, 'location_flag_reviewed', note?.trim() ? `${detail} — “${note.trim()}”` : detail).catch(() => {})
+  }
 }
 
 function clockLabel(iso) {

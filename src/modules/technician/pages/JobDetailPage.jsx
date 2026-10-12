@@ -1,23 +1,30 @@
 import { useEffect, useState, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip, Loader2 } from 'lucide-react'
-import { fetchMyAppointment, respondToAppointment, updateAppointmentStatus, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip, Loader2, CalendarPlus } from 'lucide-react'
+import { fetchMyAppointment, fetchMyJobVisits, bookFollowUpVisit, respondToAppointment, updateAppointmentStatus, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
 import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
 import { APPOINTMENT_STATUS_META, TECH_UPDATABLE_STATUSES, PAUSED_STATUSES } from '../../../shared/constants/appointmentStatuses'
 import { fetchJobPhotos, uploadJobPhotos, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument } from '../../jobs/services/jobService'
 import { fetchAssignmentTeamMembers, setAssignmentTeamMembers } from '../../users/services/teamMembersService'
 import CompleteJobModal from '../../jobs/components/CompleteJobModal'
 import SelectTeamModal from '../components/SelectTeamModal'
+import BookVisitModal from '../components/BookVisitModal'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import PhotoPicker from '../../../shared/components/PhotoPicker'
-import { formatDateLong, formatTime } from '../../../shared/utils/formatDate'
+import { formatDateLong, formatTime, toDateStr } from '../../../shared/utils/formatDate'
+import { dayKeyFor, pictureDayKeys, pictureDayLabel } from '../../../shared/utils/photoDays'
 import { formatHoursDuration } from '../../../shared/utils/shiftSummary'
+import { technicianGeoNotice } from '../../../shared/utils/geoCheck'
 
 export default function JobDetailPage({ profile }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
   const [appt, setAppt] = useState(null)
   const [photos, setPhotos] = useState([])
+  // This technician's visits on the same job — drives the picture-day tabs and
+  // the "booked next" list.
+  const [visits, setVisits] = useState([])
   const [documents, setDocuments] = useState([])
   const [teamMembers, setTeamMembers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,10 +35,15 @@ export default function JobDetailPage({ profile }) {
   const [showEditTeam, setShowEditTeam] = useState(false)
   const [confirmClockOut, setConfirmClockOut] = useState(false)
   const [photoTab, setPhotoTab] = useState('before')
+  // Which day's pictures are showing; null means today.
+  const [photoDay, setPhotoDay] = useState(null)
+  const [showBookVisit, setShowBookVisit] = useState(false)
   // Photos still uploading: local previews shown straight away in the grid.
   const [pendingPhotos, setPendingPhotos] = useState([])
   const [photoProgress, setPhotoProgress] = useState(null)
   const [photoError, setPhotoError] = useState(null)
+  // Shown after a clock-in/out whose location check wasn't clean.
+  const [geoNotice, setGeoNotice] = useState(null)
   const docFileRef = useRef(null)
 
   async function load() {
@@ -40,6 +52,7 @@ export default function JobDetailPage({ profile }) {
     if (data?.job_id) {
       setPhotos(await fetchJobPhotos(data.job_id))
       setDocuments(await fetchJobDocuments(data.job_id))
+      setVisits(await fetchMyJobVisits(data.job_id, profile.id).catch(() => []))
     }
     if (data?.assignmentId) {
       setTeamMembers(await fetchAssignmentTeamMembers(data.assignmentId))
@@ -77,7 +90,8 @@ export default function JobDetailPage({ profile }) {
   async function handleClockInConfirm(selectedTeamMemberIds) {
     setBusy(true)
     try {
-      await clockIn(appt.assignmentId)
+      const geo = await clockIn(appt.assignmentId)
+      setGeoNotice(technicianGeoNotice(geo, 'clocked in'))
       await setAssignmentTeamMembers(appt.assignmentId, selectedTeamMemberIds)
       if (appt.status !== 'on_site') {
         await updateAppointmentStatus(appt.id, 'on_site')
@@ -103,7 +117,8 @@ export default function JobDetailPage({ profile }) {
   async function handleClockOut() {
     setBusy(true)
     try {
-      await clockOut(appt.assignmentId)
+      const geo = await clockOut(appt.assignmentId)
+      setGeoNotice(technicianGeoNotice(geo, 'clocked out'))
       await load()
     } finally {
       setBusy(false)
@@ -142,6 +157,17 @@ export default function JobDetailPage({ profile }) {
     }
   }
 
+  async function handleBookVisit(values) {
+    await bookFollowUpVisit({
+      jobId: appt.job_id,
+      technicianId: profile.id,
+      jobLabel: appt.jobs?.title || appt.jobs?.job_ref,
+      ...values,
+    })
+    setVisits(await fetchMyJobVisits(appt.job_id, profile.id).catch(() => visits))
+    setShowBookVisit(false)
+  }
+
   async function handleDocUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -178,11 +204,29 @@ export default function JobDetailPage({ profile }) {
   const isPendingConfirmation = job?.status === 'pending_confirmation'
   const isCompleted = job?.status === 'completed' || job?.status === 'invoiced'
   const canManagePhotos = !isCompleted
-  const beforePhotos = photos.filter(p => (p.stage || 'before') === 'before')
-  const afterPhotos = photos.filter(p => p.stage === 'after')
-  const hasBeforeAfter = beforePhotos.length > 0 && afterPhotos.length > 0
+  // Pictures are filed by the day they were taken. Each day needs its own
+  // before and after, so completing the job looks at today's only.
+  const todayKey = toDateStr(new Date())
+  const isBefore = p => (p.stage || 'before') === 'before'
+  const isAfter = p => p.stage === 'after'
+  const photosByDay = new Map()
+  for (const p of photos) {
+    const key = dayKeyFor(p.created_at, todayKey)
+    photosByDay.set(key, [...(photosByDay.get(key) || []), p])
+  }
+  const todaysPhotos = photosByDay.get(todayKey) || []
+  const hasBeforeAfter = todaysPhotos.some(isBefore) && todaysPhotos.some(isAfter)
+  const photoDayKeys = pictureDayKeys(photos, visits, todayKey)
+  const activeDay = photoDay && photoDayKeys.includes(photoDay) ? photoDay : todayKey
+  const isToday = activeDay === todayKey
+  const dayPhotos = photosByDay.get(activeDay) || []
+  const beforePhotos = dayPhotos.filter(isBefore)
+  const afterPhotos = dayPhotos.filter(isAfter)
   const visiblePhotos = photoTab === 'before' ? beforePhotos : afterPhotos
-  const visiblePending = pendingPhotos.filter(p => p.stage === photoTab)
+  const visiblePending = isToday ? pendingPhotos.filter(p => p.stage === photoTab) : []
+  const canBookVisit = isAccepted && !isCompleted && !isPendingConfirmation
+  const bookedNext = visits.filter(v => v.id !== appt.id && toDateStr(v.scheduled_start) >= todayKey)
+  const visitsBase = location.pathname.startsWith('/my-jobs') ? '/my-jobs' : '/jobs'
   // Team members clock in and out with the technician, so everyone on this
   // assignment shares one on-site window.
   const onSiteMs = appt.actual_start && appt.actual_end
@@ -205,6 +249,16 @@ export default function JobDetailPage({ profile }) {
       </div>
 
       <div className="p-4 space-y-4">
+        {geoNotice && (
+          <div className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${
+            geoNotice.tone === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-gray-50 border-gray-200 text-gray-600'
+          }`}>
+            <MapPin size={14} className="mt-0.5 shrink-0" />
+            <p className="flex-1">{geoNotice.text}</p>
+            <button type="button" onClick={() => setGeoNotice(null)} className="text-xs font-semibold shrink-0">Dismiss</button>
+          </div>
+        )}
+
         <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
           <p className="text-sm font-bold text-gray-900">{job?.customers?.customer_name}</p>
           {(job?.customers?.mobile || job?.customers?.telephone) && (
@@ -271,7 +325,7 @@ export default function JobDetailPage({ profile }) {
             ) : (
               <button
                 disabled={busy || !hasBeforeAfter}
-                title={!hasBeforeAfter ? 'Upload at least one Before and one After photo to complete the job' : undefined}
+                title={!hasBeforeAfter ? "Upload at least one Before and one After photo today to complete the job" : undefined}
                 onClick={() => setShowComplete(true)}
                 className="flex-1 bg-green-600 text-white text-sm font-semibold py-2.5 rounded-lg disabled:opacity-50"
               >
@@ -318,8 +372,36 @@ export default function JobDetailPage({ profile }) {
 
         {isAccepted && !isCompleted && !isPendingConfirmation && !hasBeforeAfter && (
           <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            You must upload at least one "Before Job" and one "After Job" photo before you can complete this job.
+            You must upload at least one "Before Job" and one "After Job" photo today before you can complete this job.
           </p>
+        )}
+
+        {canBookVisit && (
+          <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Work continues another day?</p>
+            {bookedNext.length > 0 && (
+              <div className="space-y-1">
+                {bookedNext.map(v => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => navigate(`${visitsBase}/${v.id}`)}
+                    className="w-full flex items-center justify-between text-sm text-left bg-gray-50 rounded-lg px-3 py-2"
+                  >
+                    <span className="text-gray-800">{formatDateLong(v.scheduled_start)}</span>
+                    <span className="text-xs text-gray-500">{formatTime(v.scheduled_start)}–{formatTime(v.scheduled_end)}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowBookVisit(true)}
+              className="w-full flex items-center justify-center gap-1.5 bg-white border border-blue-300 text-blue-600 text-sm font-semibold py-2.5 rounded-lg"
+            >
+              <CalendarPlus size={16} /> Book Another Day
+            </button>
+          </div>
         )}
 
         {isPendingConfirmation && (
@@ -357,7 +439,23 @@ export default function JobDetailPage({ profile }) {
         )}
 
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Photos</p>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Pictures</p>
+
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {photoDayKeys.map(key => {
+              const count = (photosByDay.get(key) || []).length
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setPhotoDay(key)}
+                  className={`shrink-0 text-xs font-semibold px-3 py-1.5 rounded-full border whitespace-nowrap ${key === activeDay ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200'}`}
+                >
+                  {pictureDayLabel(key, todayKey)}{count > 0 && ` (${count})`}
+                </button>
+              )
+            })}
+          </div>
 
           <div className="flex gap-2">
             <button
@@ -374,7 +472,7 @@ export default function JobDetailPage({ profile }) {
             </button>
           </div>
 
-          {canManagePhotos && (
+          {canManagePhotos && isToday && (
             <div className="flex items-center justify-between gap-2">
               <PhotoPicker onFiles={handlePhotoFiles} className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 py-1">
                 <Camera size={16} /> Add {photoTab === 'before' ? 'Before' : 'After'} Photos
@@ -387,12 +485,17 @@ export default function JobDetailPage({ profile }) {
               )}
             </div>
           )}
+          {!isToday && (
+            <p className="text-xs text-gray-500">Past days are view-only. New pictures are added under Today's Pictures.</p>
+          )}
           {photoError && (
             <p className="text-xs text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">{photoError}</p>
           )}
 
           {visiblePhotos.length === 0 && visiblePending.length === 0 ? (
-            <p className="text-sm text-gray-400">No {photoTab} photos yet.</p>
+            <p className="text-sm text-gray-400">
+              No {photoTab} photos {isToday ? 'yet' : 'were added on this day'}.
+            </p>
           ) : (
             <div className="grid grid-cols-3 gap-2">
               {visiblePending.map(p => (
@@ -490,6 +593,14 @@ export default function JobDetailPage({ profile }) {
           existing={teamMembers}
           onConfirm={handleEditTeamConfirm}
           onClose={() => setShowEditTeam(false)}
+        />
+      )}
+
+      {showBookVisit && (
+        <BookVisitModal
+          appointment={appt}
+          onConfirm={handleBookVisit}
+          onClose={() => setShowBookVisit(false)}
         />
       )}
 
