@@ -66,7 +66,7 @@ export default function SignaturePad({ onChange }) {
 
   return (
     <div>
-      <div className="relative border border-gray-300 rounded bg-white">
+      <div className="signature-sheet relative border border-gray-300 rounded">
         <canvas
           ref={canvasRef}
           className="w-full h-48 touch-none cursor-crosshair rounded"
@@ -79,7 +79,7 @@ export default function SignaturePad({ onChange }) {
           onTouchEnd={end}
         />
         {empty && (
-          <p className="absolute inset-0 flex items-center justify-center text-sm text-gray-300 pointer-events-none">
+          <p className="absolute inset-0 flex items-center justify-center text-sm text-[#d1d5db] pointer-events-none">
             Sign here
           </p>
         )}

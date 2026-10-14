@@ -6,9 +6,10 @@ import {
   DollarSign, Users, Package, Receipt, UserCircle2,
   BarChart2, FolderOpen, Settings, ChevronDown,
   LogOut, Menu, X, BookOpen, MessageSquare, Bell,
-  Handshake, User, LayoutDashboard
+  Handshake, User, LayoutDashboard, Palette
 } from 'lucide-react'
 import NotificationBell from '../shared/components/NotificationBell'
+import ThemePicker from '../shared/components/ThemePicker'
 import ClockBubble from '../shared/components/ClockBubble'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 
@@ -404,8 +405,8 @@ export default function Layout() {
   function openUserMenu(e) {
     e.stopPropagation()
     const rect = e.currentTarget.getBoundingClientRect()
-    // right-align the 192px panel to the button's right edge
-    setUserPos({ top: rect.bottom + 4, left: rect.right - 192 })
+    // right-align the 224px panel to the button's right edge
+    setUserPos({ top: rect.bottom + 4, left: rect.right - 224 })
     setUserOpen(o => !o)
     setOpenMenu(null)
   }
@@ -555,7 +556,7 @@ export default function Layout() {
       {userOpen && (
         <div
           onPointerDown={e => e.stopPropagation()}
-          style={{ position:'fixed', top:userPos.top, left:userPos.left, width:192, zIndex:9999 }}
+          style={{ position:'fixed', top:userPos.top, left:userPos.left, width:224, zIndex:9999 }}
           className="bg-white border border-gray-200 rounded-xl shadow-xl py-1.5"
         >
           <NavLink to="/my-jobs" onClick={() => setUserOpen(false)}
@@ -567,6 +568,11 @@ export default function Layout() {
             <User size={14}/> My Profile
           </NavLink>
           <div className="my-1 border-t border-gray-100"/>
+          <div className="flex items-center gap-1.5 px-4 pt-1.5 pb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+            <Palette size={11}/> Theme
+          </div>
+          <ThemePicker variant="menu"/>
+          <div className="my-1.5 border-t border-gray-100"/>
           <button onClick={handleLogout}
             className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg mx-1">
             <LogOut size={14}/> Log Out

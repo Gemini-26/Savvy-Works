@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { LogOut, Clock, MapPin, KeyRound, FolderOpen, ChevronRight } from 'lucide-react'
+import { LogOut, Clock, MapPin, KeyRound, Palette, FolderOpen, ChevronRight } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import { fetchActiveShift, clockInForWork, clockOutForWork, fetchShiftHistory, onWorkShiftChange } from '../../../shared/services/workShiftService'
 import { fetchOnSiteHistory } from '../services/technicianService'
@@ -9,6 +9,7 @@ import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import BackgroundAccessCard from '../../../shared/components/BackgroundAccessCard'
+import ThemePicker from '../../../shared/components/ThemePicker'
 import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 import { describeOnSiteCrew } from '../../../shared/utils/shiftSummary'
 
@@ -129,6 +130,14 @@ export default function ProfilePage({ profile }) {
         </div>
         <ChevronRight size={16} className="text-gray-400 shrink-0" />
       </Link>
+
+      <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+        <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+          <Palette size={16} /> Appearance
+        </div>
+        <ThemePicker />
+        <p className="text-xs text-gray-400">Saved on this device only.</p>
+      </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-bold text-gray-900">

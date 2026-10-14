@@ -1,0 +1,235 @@
+/* ── Colour themes ───────────────────────────────────────────────────────────
+   The app is styled with Tailwind's stock palette (bg-white, text-gray-500,
+   bg-blue-600 …). Tailwind v4 compiles each of those to a CSS variable, so a
+   theme is a second set of values for those variables, scoped to
+   <html data-theme="…">. No component needs to know which theme is active.
+
+   Daylight ('light') is the Tailwind default and has no block here.
+   The list the picker shows lives in src/shared/constants/themes.js.
+
+   Layout of this file:
+     1. Shared dark rules   – everything Midnight and Savvy have in common
+     2. Midnight            – navy dark, blue accent
+     3. Savvy               – black dark, brand-red accent
+     4. Forest              – light, sage greys, pine-green accent
+   A dark theme only supplies the variables listed at the top of its block;
+   section 1 turns them into tints, text colours, charts and maps.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+
+/* ═══ 1. SHARED DARK RULES ══════════════════════════════════════════════════ */
+:root:is([data-theme="midnight"], [data-theme="savvy"]) {
+  color-scheme: dark;                 /* native inputs, date pickers, scrollbars */
+
+  --color-slate-50:  var(--color-gray-50);
+  --color-slate-100: var(--color-gray-100);
+  --color-slate-600: var(--color-gray-600);
+  --color-slate-700: var(--color-gray-700);
+  --color-slate-800: var(--color-gray-800);
+
+  /* Pale tints (badges, alerts, hover fills, borders) become dark, tinted glass
+     mixed into the card colour. "primary" is the blue family (buttons, links,
+     active tabs); "danger" is the red family (errors, delete). */
+  --color-blue-50:    color-mix(in srgb, var(--hue-primary) 14%, var(--surface));
+  --color-blue-100:   color-mix(in srgb, var(--hue-primary) 24%, var(--surface));
+  --color-blue-200:   color-mix(in srgb, var(--hue-primary) 40%, var(--surface));
+  --color-red-50:     color-mix(in srgb, var(--hue-danger) 14%, var(--surface));
+  --color-red-100:    color-mix(in srgb, var(--hue-danger) 24%, var(--surface));
+  --color-red-200:    color-mix(in srgb, var(--hue-danger) 40%, var(--surface));
+  --color-green-50:   color-mix(in srgb, #22c55e 14%, var(--surface));
+  --color-green-100:  color-mix(in srgb, #22c55e 24%, var(--surface));
+  --color-green-200:  color-mix(in srgb, #22c55e 40%, var(--surface));
+  --color-amber-50:   color-mix(in srgb, #f59e0b 14%, var(--surface));
+  --color-amber-100:  color-mix(in srgb, #f59e0b 24%, var(--surface));
+  --color-amber-200:  color-mix(in srgb, #f59e0b 40%, var(--surface));
+  --color-yellow-50:  color-mix(in srgb, #eab308 14%, var(--surface));
+  --color-yellow-100: color-mix(in srgb, #eab308 24%, var(--surface));
+  --color-orange-50:  color-mix(in srgb, #f97316 14%, var(--surface));
+  --color-orange-100: color-mix(in srgb, #f97316 24%, var(--surface));
+  --color-teal-50:    color-mix(in srgb, #14b8a6 14%, var(--surface));
+  --color-teal-100:   color-mix(in srgb, #14b8a6 24%, var(--surface));
+  --color-teal-200:   color-mix(in srgb, #14b8a6 40%, var(--surface));
+  --color-emerald-50:  color-mix(in srgb, #10b981 14%, var(--surface));
+  --color-emerald-100: color-mix(in srgb, #10b981 24%, var(--surface));
+  --color-emerald-200: color-mix(in srgb, #10b981 40%, var(--surface));
+  --color-indigo-50:  color-mix(in srgb, #6366f1 14%, var(--surface));
+  --color-indigo-100: color-mix(in srgb, #6366f1 24%, var(--surface));
+  --color-purple-50:  color-mix(in srgb, #a855f7 14%, var(--surface));
+  --color-purple-100: color-mix(in srgb, #a855f7 24%, var(--surface));
+  --color-violet-50:  color-mix(in srgb, #8b5cf6 14%, var(--surface));
+  --color-cyan-100:   color-mix(in srgb, #06b6d4 24%, var(--surface));
+
+  /* Cards, header and menus. bg-white can't be re-pointed through the palette
+     because text-white shares the same variable (and must stay white). */
+  & .bg-white,
+  & .hover\:bg-white:hover { background-color: var(--surface); }
+  & .bg-white\/90 { background-color: color-mix(in srgb, var(--surface) 90%, transparent); }
+
+  /* Coloured text (links, status text, errors) is written for a white page; the
+     600/700 shades are also button backgrounds, so lighten the text role only. */
+  & :is(.text-blue-500, .text-blue-600, .text-blue-700)      { color: var(--ink-primary); }
+  & :is(.text-blue-800, .text-blue-900)                       { color: var(--ink-primary-strong); }
+  & :is(.text-red-500, .text-red-600, .text-red-700)          { color: var(--ink-danger); }
+  & .text-red-800                                             { color: var(--ink-danger-strong); }
+  & :is(.text-green-600, .text-green-700)                     { color: #4ade80; }
+  & .text-green-800                                           { color: #86efac; }
+  & :is(.text-amber-600, .text-amber-700)                     { color: #fbbf24; }
+  & .text-amber-800                                           { color: #fcd34d; }
+  & :is(.text-yellow-600, .text-yellow-700)                   { color: #facc15; }
+  & :is(.text-orange-600, .text-orange-700)                   { color: #fb923c; }
+  & :is(.text-teal-600, .text-teal-700)                       { color: #2dd4bf; }
+  & .text-teal-800                                            { color: #5eead4; }
+  & :is(.text-emerald-600, .text-emerald-700)                 { color: #34d399; }
+  & .text-emerald-800                                         { color: #6ee7b7; }
+  & :is(.text-indigo-600, .text-indigo-700)                   { color: #818cf8; }
+  & :is(.text-purple-600, .text-purple-700)                   { color: #c084fc; }
+  & .text-violet-600                                          { color: #a78bfa; }
+  & :is(.text-cyan-600, .text-cyan-700)                       { color: #22d3ee; }
+
+  /* Hover colours for the same text (these sit one step brighter). */
+  & :is(.hover\:text-blue-600, .hover\:text-blue-700, .hover\:text-blue-800):hover { color: var(--ink-primary-strong); }
+  & .group:hover .group-hover\:text-blue-600                                       { color: var(--ink-primary-strong); }
+  & :is(.hover\:text-red-600, .hover\:text-red-700, .hover\:text-red-800):hover    { color: var(--ink-danger-strong); }
+  & .hover\:text-green-800:hover                                                   { color: #86efac; }
+  & .hover\:text-teal-800:hover                                                    { color: #5eead4; }
+
+  /* Solid dark-grey buttons / active pills carry white text, so keep them dark
+     even though the grey scale is flipped. */
+  & :is(.bg-gray-700, .bg-gray-900) { background-color: var(--btn-solid); }
+  & .border-gray-900                { border-color: var(--btn-solid); }
+  & .hover\:bg-gray-800:hover       { background-color: var(--btn-solid-hover); }
+
+  /* Charts (Recharts sets these as SVG attributes / inline styles for a white page). */
+  & .recharts-cartesian-grid line       { stroke: var(--color-gray-100); }
+  & .recharts-cartesian-axis-tick-value { fill: var(--color-gray-500); }
+  & .recharts-tooltip-cursor            { fill: var(--color-gray-100); }
+  & .recharts-sector                    { stroke: var(--surface); }
+  & .recharts-default-tooltip           { background-color: var(--surface) !important; border-color: var(--color-gray-200) !important; }
+
+  /* Maps: dim the OpenStreetMap tiles; markers live in a different pane so they keep their colours. */
+  & .leaflet-container                  { background: var(--app-bg); }
+  & .leaflet-tile-pane                  { filter: invert(1) hue-rotate(180deg) brightness(.92) contrast(.88) saturate(.75); }
+  & :is(.leaflet-popup-content-wrapper, .leaflet-popup-tip) { background: var(--surface); color: var(--color-gray-800); }
+  & .leaflet-bar a                      { background-color: var(--surface); color: var(--color-gray-800); border-bottom-color: var(--color-gray-200); }
+  & .leaflet-bar a:hover                { background-color: var(--color-gray-100); }
+  & .leaflet-control-attribution        { background: color-mix(in srgb, var(--surface) 80%, transparent); color: var(--color-gray-500); }
+  & .leaflet-control-attribution a      { color: var(--ink-primary); }
+}
+
+/* Signature pad: dark ink on a white sheet, whatever the theme. */
+.signature-sheet { background-color: #fff; }
+
+
+/* ═══ 2. MIDNIGHT — navy dark, blue accent ══════════════════════════════════ */
+:root[data-theme="midnight"] {
+  --app-bg:  #0c1424;
+  --surface: #131d31;                 /* cards, header, menus */
+
+  /* Greys are flipped, so text-gray-900 is still the strongest text. */
+  --color-gray-50:  #0c1424;
+  --color-gray-100: #1b2740;
+  --color-gray-200: #27354f;
+  --color-gray-300: #354663;
+  --color-gray-400: #7f8da4;
+  --color-gray-500: #98a6bb;
+  --color-gray-600: #adb8ca;
+  --color-gray-700: #c5cddb;
+  --color-gray-800: #dde3ec;
+  --color-gray-900: #f1f5f9;
+
+  --hue-primary: #3b82f6;
+  --hue-danger:  #ef4444;
+  --ink-primary:        #60a5fa;      /* links / active text on dark */
+  --ink-primary-strong: #93c5fd;
+  --ink-danger:         #f87171;
+  --ink-danger-strong:  #fca5a5;
+  --btn-solid:          #334155;
+  --btn-solid-hover:    #475569;
+}
+
+
+/* ═══ 3. SAVVY — black dark, brand-red accent ═══════════════════════════════
+   Echoes savvyplumbing.co.za: black bar, brand red (#CC2525) for actions.
+   Red is also the app's "danger" colour (delete, errors), so danger is nudged
+   toward rose to stay distinguishable from the red primary buttons. */
+:root[data-theme="savvy"] {
+  --app-bg:  #0a0a0a;
+  --surface: #151515;                 /* cards, menus */
+
+  --color-gray-50:  #0a0a0a;
+  --color-gray-100: #1e1e1e;
+  --color-gray-200: #2d2d2d;
+  --color-gray-300: #424242;
+  --color-gray-400: #8a8a8a;
+  --color-gray-500: #a3a3a3;
+  --color-gray-600: #b8b8b8;
+  --color-gray-700: #cfcfcf;
+  --color-gray-800: #e6e6e6;
+  --color-gray-900: #fafafa;
+
+  /* Primary (the app's blue) → brand red. 50–200 tints come from --hue-primary. */
+  --hue-primary: #cc2525;
+  --color-blue-300: #e46464;
+  --color-blue-400: #e04848;
+  --color-blue-500: #d93a3a;
+  --color-blue-600: #cc2525;          /* white text on this: 5.4:1 */
+  --color-blue-700: #a81e1e;          /* hover */
+  --color-blue-800: #8a1818;
+  --color-blue-900: #6b1212;
+  --ink-primary:        #f25555;
+  --ink-primary-strong: #ff8a85;
+
+  /* Danger (the app's red) → rose, so Delete never looks like a primary button. */
+  --hue-danger: #f43f5e;
+  --color-red-400: #fb7185;
+  --color-red-500: #f43f5e;
+  --color-red-600: #e11d48;
+  --color-red-700: #be123c;
+  --color-red-800: #9f1239;
+  --ink-danger:         #fb7185;
+  --ink-danger-strong:  #fda4af;
+
+  --btn-solid:          #3a3a3a;
+  --btn-solid-hover:    #505050;
+}
+
+/* The black top bar with a red edge (and the technician's bottom tab bar). */
+:root[data-theme="savvy"] :is(header.bg-white, nav.fixed.bg-white) {
+  background-color: #000;
+  border-color: #cc2525;
+}
+
+
+/* ═══ 4. FOREST — light, green ══════════════════════════════════════════════
+   Sage-tinted neutrals and a deep pine green in place of the blue accent. */
+:root[data-theme="forest"] {
+  --app-bg: #f3f5f0;
+
+  --color-gray-50:  #f3f5f0;
+  --color-gray-100: #e9ede4;
+  --color-gray-200: #dfe4d8;
+  --color-gray-300: #c5ccb9;
+  --color-gray-400: #97a08c;
+  --color-gray-500: #6b7563;
+  --color-gray-600: #525c4b;
+  --color-gray-700: #3d4638;
+  --color-gray-800: #272e23;
+  --color-gray-900: #181d15;
+  --color-slate-50:  var(--color-gray-50);
+  --color-slate-100: var(--color-gray-100);
+  --color-slate-600: var(--color-gray-600);
+  --color-slate-700: var(--color-gray-700);
+  --color-slate-800: var(--color-gray-800);
+
+  /* "Primary" is blue throughout the app (buttons, links, focus rings, active tabs). */
+  --color-blue-50:  #effaf6;
+  --color-blue-100: #d5f2e7;
+  --color-blue-200: #aee4d0;
+  --color-blue-300: #7dcfb4;
+  --color-blue-400: #45b393;
+  --color-blue-500: #1f9676;
+  --color-blue-600: #0f7a5f;
+  --color-blue-700: #0b624c;
+  --color-blue-800: #0a4e3d;
+  --color-blue-900: #083d31;
+}

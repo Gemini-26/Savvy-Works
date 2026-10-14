@@ -1,6 +1,9 @@
 /* ── Tailwind v4 entry point ─────────────────────────────────────────────── */
 @import "tailwindcss";
 
+/* ── Colour themes (Midnight, Forest) — see the header of themes.css ────── */
+@import "./themes.css";
+
 /* ── Global resets that Tailwind preflight doesn't cover ────────────────── */
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -8,7 +11,7 @@ html, body, #root {
   height: 100%;
   margin: 0;
   padding: 0;
-  background: #f9fafb;   /* gray-50 */
+  background: var(--app-bg, #f9fafb);   /* gray-50 in Daylight; each theme sets --app-bg */
   font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
                'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;

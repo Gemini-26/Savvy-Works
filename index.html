@@ -7,6 +7,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#CC2525" />
     <title>Savvy Civils and Plumbing</title>
+    <script>
+      // Apply the saved colour theme before first paint so there is no flash.
+      // Keep these ids in step with src/shared/constants/themes.js.
+      try {
+        var savedTheme = localStorage.getItem('savvy-theme')
+        if (savedTheme === 'midnight' || savedTheme === 'savvy' || savedTheme === 'forest') {
+          document.documentElement.setAttribute('data-theme', savedTheme)
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
