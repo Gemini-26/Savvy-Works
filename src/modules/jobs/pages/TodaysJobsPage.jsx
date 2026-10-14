@@ -14,6 +14,7 @@ import FilterBar from '../../../shared/components/FilterBar'
 import { isFilterActive, matchesFilters, matchesWords, toOptions } from '../../../shared/utils/listFilters'
 import { APPOINTMENT_STATUS_META } from '../../../shared/constants/appointmentStatuses'
 import { formatSiteAddress } from '../../../shared/utils/siteAddress'
+import { isReturnVisit, isSignedOff } from '../../../shared/utils/returnVisit'
 
 // Every appointment status rolls up into one of these buckets so each
 // technician's day reads as done / underway / still to do / hit a snag.
@@ -34,9 +35,10 @@ function bucketOf(status) {
 // the visit, so a finished job's appointment could sit on "On Site" forever.
 // Once the job itself is signed off, an in-progress or not-started visit on
 // it counts as completed. Issue statuses (no access, on hold…) are kept.
-const JOB_SIGNED_OFF = ['pending_confirmation', 'completed', 'invoiced']
+// A visit booked on the job after that sign-off (a return visit) is still open.
 function withEffectiveStatus(appt) {
-  const signedOff = JOB_SIGNED_OFF.includes(appt.jobs?.status)
+  const clockIns = (appt.appointment_assignments ?? []).map(a => a.actual_start)
+  const signedOff = isSignedOff(appt.jobs) && !isReturnVisit(appt.jobs, appt.status, clockIns)
   const open = ['active', 'pending'].includes(bucketOf(appt.status))
   return signedOff && open ? { ...appt, raw_status: appt.status, status: 'completed' } : appt
 }
@@ -79,7 +81,7 @@ async function fetchDay(dateStr) {
     .from('appointments')
     .select(`
       id, scheduled_start, scheduled_end, status, job_id,
-      jobs(id, job_ref, title, priority, status, job_type, site_address, site_city, archived_at, customers(customer_name)),
+      jobs(id, job_ref, title, priority, status, completed_at, job_type, site_address, site_city, archived_at, customers(customer_name)),
       appointment_assignments(id, technician_id, actual_start, actual_end, profiles(id, full_name, color, role))
     `)
     .gte('scheduled_start', from)
@@ -96,7 +98,7 @@ async function fetchWeekTrend(dateStr) {
   const [from, to] = dayRange(firstDay, 7)
   const { data, error } = await supabase
     .from('appointments')
-    .select('scheduled_start, status, jobs(status, archived_at)')
+    .select('scheduled_start, status, jobs(status, completed_at, archived_at), appointment_assignments(actual_start)')
     .gte('scheduled_start', from)
     .lt('scheduled_start', to)
     .neq('status', 'cancelled')

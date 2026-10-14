@@ -18,7 +18,7 @@ export async function fetchMyAppointments(technicianId) {
       id, actual_start, actual_end,
       appointments(
         id, scheduled_start, scheduled_end, status, notes, job_id,
-        jobs(id, job_ref, title, priority, status, archived_at, site_address, site_city, customers(customer_name, telephone, mobile))
+        jobs(id, job_ref, title, priority, status, completed_at, archived_at, site_address, site_city, customers(customer_name, telephone, mobile))
       )
     `)
     .eq('technician_id', technicianId)

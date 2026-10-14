@@ -4,6 +4,7 @@ import { MapPin, Clock, ChevronRight, Briefcase, CheckCircle, XCircle, Ban } fro
 import { fetchMyAppointments, respondToAppointment, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
 import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
 import { formatDate, formatTime } from '../../../shared/utils/formatDate'
+import { isReturnVisit } from '../../../shared/utils/returnVisit'
 
 const STATUS_STYLES = {
   not_dispatched: 'bg-gray-100 text-gray-600',
@@ -38,6 +39,7 @@ function AppointmentCard({ appt, onRespond, basePath }) {
   const navigate = useNavigate()
   const job = appt.jobs
   const isPending = PENDING_RESPONSE_STATUSES.includes(appt.status)
+  const returning = isReturnVisit(job, appt.status, [appt.actual_start])
   const [busy, setBusy] = useState(false)
 
   async function respond(e, status) {
@@ -64,7 +66,11 @@ function AppointmentCard({ appt, onRespond, basePath }) {
           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full capitalize ${STATUS_STYLES[appt.status] || 'bg-gray-100 text-gray-600'}`}>
             {appt.status?.replace(/_/g, ' ')}
           </span>
-          {JOB_STATUS_LABELS[job?.status] && (
+          {returning ? (
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700">
+              Return visit
+            </span>
+          ) : JOB_STATUS_LABELS[job?.status] && (
             <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${JOB_STATUS_STYLES[job.status]}`}>
               {JOB_STATUS_LABELS[job.status]}
             </span>
@@ -137,7 +143,8 @@ export default function MyJobsPage({ profile, basePath = '/jobs' }) {
   if (loading) return <div className="p-4 text-sm text-gray-500">Loading…</div>
   if (error) return <div className="p-4 text-sm text-red-600">{error}</div>
 
-  const isCompleted = a => ['completed', 'invoiced'].includes(a.jobs?.status)
+  // A visit booked after the job was signed off is still to be worked.
+  const isCompleted = a => ['completed', 'invoiced'].includes(a.jobs?.status) && !isReturnVisit(a.jobs, a.status, [a.actual_start])
   const isCancelled = a => a.status === 'cancelled' || a.jobs?.status === 'cancelled'
   const isDeclined  = a => a.status === 'declined'
   const isDone = a => isCompleted(a) || isDeclined(a) || isCancelled(a)

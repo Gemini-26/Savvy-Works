@@ -93,6 +93,9 @@ export default function AppointmentModal({
         // Don't overwrite a date/time already picked while this loaded.
         if (stale || dateTouched.current || !data?.scheduled_for) return
         const when = new Date(data.scheduled_for)
+        // A job already worked (or overdue) has a past "Scheduled For". Starting
+        // from it put a new visit on that old day, where nobody can clock in.
+        if (localDateStr(when) < localDateStr(new Date())) return
         const hh = when.getHours()
         setForm(prev => ({
           ...prev,

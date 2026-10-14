@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip, Loader2, CalendarPlus } from 'lucide-react'
+import { ArrowLeft, MapPin, Phone, Clock, Camera, Trash2, Paperclip, Loader2, CalendarPlus, RotateCcw } from 'lucide-react'
 import { fetchMyAppointment, fetchMyJobVisits, bookFollowUpVisit, respondToAppointment, updateAppointmentStatus, clockIn, clockOut, PENDING_RESPONSE_STATUSES } from '../services/technicianService'
 import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
 import { APPOINTMENT_STATUS_META, TECH_UPDATABLE_STATUSES, PAUSED_STATUSES } from '../../../shared/constants/appointmentStatuses'
@@ -16,6 +16,7 @@ import { dayKeyFor, pictureDayKeys, pictureDayLabel } from '../../../shared/util
 import { formatHoursDuration } from '../../../shared/utils/shiftSummary'
 import { technicianGeoNotice } from '../../../shared/utils/geoCheck'
 import { isSitePinConfirmed } from '../../../shared/utils/siteLocation'
+import { isReturnVisit } from '../../../shared/utils/returnVisit'
 import SiteLocationCard from '../components/SiteLocationCard'
 
 export default function JobDetailPage({ profile }) {
@@ -203,8 +204,11 @@ export default function JobDetailPage({ profile }) {
   // can resume, or complete, the job once the blocker is cleared.
   const isPaused = PAUSED_STATUSES.includes(appt.status)
   const isAccepted = appt.status === 'accepted' || appt.status === 'on_route' || appt.status === 'on_site' || isPaused
-  const isPendingConfirmation = job?.status === 'pending_confirmation'
-  const isCompleted = job?.status === 'completed' || job?.status === 'invoiced'
+  // A visit booked on a job that was already signed off is worked like a new
+  // job, so the job's earlier sign-off must not lock it.
+  const isReturn = isReturnVisit(job, appt.status, [appt.actual_start])
+  const isPendingConfirmation = job?.status === 'pending_confirmation' && !isReturn
+  const isCompleted = (job?.status === 'completed' || job?.status === 'invoiced') && !isReturn
   const canManagePhotos = !isCompleted
   // Pictures are filed by the day they were taken. Each day needs its own
   // before and after, so completing the job looks at today's only.
@@ -260,6 +264,16 @@ export default function JobDetailPage({ profile }) {
             <MapPin size={14} className="mt-0.5 shrink-0" />
             <p className="flex-1">{geoNotice.text}</p>
             <button type="button" onClick={() => setGeoNotice(null)} className="text-xs font-semibold shrink-0">Dismiss</button>
+          </div>
+        )}
+
+        {isReturn && (
+          <div className="flex items-start gap-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">
+            <RotateCcw size={14} className="mt-0.5 shrink-0" />
+            <p className="flex-1">
+              <span className="font-semibold">Return visit.</span>{' '}
+              This job was signed off{job.completed_at ? ` on ${formatDateLong(job.completed_at)}` : ''}, and you're booked back on it. Work it like a new job: clock in, take today's before and after pictures, and sign it off again when you're done. Earlier days' pictures stay under their own tab.
+            </p>
           </div>
         )}
 
@@ -414,7 +428,7 @@ export default function JobDetailPage({ profile }) {
             <button disabled className="flex-1 bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold py-2.5 rounded-lg cursor-not-allowed">
               Awaiting admin approval
             </button>
-            {!appt.actual_end && (
+            {appt.actual_start && !appt.actual_end && (
               <button
                 disabled={busy}
                 onClick={() => setConfirmClockOut(true)}
@@ -431,7 +445,7 @@ export default function JobDetailPage({ profile }) {
             <div className="bg-green-50 border border-green-200 text-green-700 text-sm px-3 py-2 rounded-lg">
               Job completed{job.sign_off_name ? ` — signed off by ${job.sign_off_name}` : ''}
             </div>
-            {!appt.actual_end && (
+            {appt.actual_start && !appt.actual_end && (
               <button
                 disabled={busy}
                 onClick={() => setConfirmClockOut(true)}
