@@ -5,6 +5,7 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import OnSiteHoursSummary from '../../../shared/components/OnSiteHoursSummary'
 import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import { fetchTeamMember, fetchTeamMemberOnSiteSessions } from '../services/teamMembersService'
+import { useCurrentUser } from '../../../hooks/useCurrentUser'
 
 // A team member (labourer/helper) has no login, so there is no day shift to
 // show — their record is purely the on-site sessions a technician logged them
@@ -12,6 +13,7 @@ import { fetchTeamMember, fetchTeamMemberOnSiteSessions } from '../services/team
 export default function TeamMemberLogPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const { isAdmin } = useCurrentUser()
 
   const [member, setMember] = useState(null)
   const [sessions, setSessions] = useState([])
@@ -48,10 +50,18 @@ export default function TeamMemberLogPage() {
             </p>
           </div>
         </div>
-        <button type="button" onClick={() => navigate('/users/team/active')}
-          className="bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-600 transition-colors">
-          ← Back
-        </button>
+        <div className="flex gap-2">
+          {isAdmin && (
+            <button type="button" onClick={() => navigate(`/users/team/${id}/documents`)}
+              className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-indigo-700 transition-colors">
+              📁 Documents
+            </button>
+          )}
+          <button type="button" onClick={() => navigate('/users/team/active')}
+            className="bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-600 transition-colors">
+            ← Back
+          </button>
+        </div>
       </div>
 
       {member.phone && (

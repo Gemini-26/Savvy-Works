@@ -231,6 +231,12 @@ export default function ActiveTeamMembersPage({ activeOnly = true }) {
                           On-Site Log
                         </button>
                         <button
+                          onClick={() => navigate(`/users/team/${m.id}/documents`)}
+                          className="text-xs font-medium text-blue-600 hover:text-blue-800 mr-3"
+                        >
+                          Documents
+                        </button>
+                        <button
                           onClick={() => startEdit(m)}
                           className="text-xs font-medium text-gray-600 hover:text-gray-900 mr-3"
                         >

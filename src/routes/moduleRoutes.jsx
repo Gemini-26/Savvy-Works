@@ -14,6 +14,9 @@ import ActiveTeamMembersPage from '../modules/users/pages/ActiveTeamMembersPage'
 import TeamMemberLogPage from '../modules/users/pages/TeamMemberLogPage'
 import NewUserPage from '../modules/users/pages/NewUserPage'
 import UserDetailPage from '../modules/users/pages/UserDetailPage'
+import ProfileDocumentsPage from '../modules/users/pages/ProfileDocumentsPage'
+import TeamMemberDocumentsPage from '../modules/users/pages/TeamMemberDocumentsPage'
+import CompanyDocumentsPage from '../modules/documents/pages/CompanyDocumentsPage'
 import UserLogsPage from '../modules/users/pages/UserLogsPage'
 import UserActivityLogPage from '../modules/users/pages/UserActivityLogPage'
 import TimePlannerPage from '../modules/planner/pages/TimePlannerPage'
@@ -163,9 +166,11 @@ export const moduleRoutes = [
   { path: 'users/logs',          element: <UserLogsPage />,                        title: 'User Logs' },
   { path: 'users/logs/:id',      element: <UserActivityLogPage />,                 title: 'User Activity Log' },
   { path: 'users/:id',           element: <UserDetailPage />,                      title: 'User' },
+  { path: 'users/:id/documents', element: <ProfileDocumentsPage />,                 title: 'User Documents' },
   { path: 'users/team/active',   element: <ActiveTeamMembersPage activeOnly={true} />,  title: 'Active Team Members' },
   { path: 'users/team/inactive', element: <ActiveTeamMembersPage activeOnly={false} />,  title: 'Inactive Team Members' },
   { path: 'users/team/:id',      element: <TeamMemberLogPage />,                        title: 'Team Member Log' },
+  { path: 'users/team/:id/documents', element: <TeamMemberDocumentsPage />,             title: 'Team Member Documents' },
   { path: 'users/timeoff/awaiting',    title: 'Time Off Awaiting Approval' },
   { path: 'users/timeoff/approved',    title: 'Time Off Approved' },
   { path: 'users/timeoff/declined',    title: 'Time Off Declined' },
@@ -224,7 +229,7 @@ export const moduleRoutes = [
 
   // ── File Manager ──────────────────────────────────────────────────────────
   { path: 'files/attachments',    title: 'Attachments' },
-  { path: 'files/documents',      title: 'Digital Documents' },
+  { path: 'files/documents',      element: <CompanyDocumentsPage />,                        title: 'Digital Documents' },
   { path: 'files/questionnaires', title: 'Completed Questionnaires' },
 
   // ── Settings ──────────────────────────────────────────────────────────────

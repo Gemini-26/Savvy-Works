@@ -171,6 +171,12 @@ export default function UserDetailPage() {
               ✏️ Edit
             </button>
           )}
+          {isAdmin && (
+            <button type="button" onClick={() => navigate(`/users/${id}/documents`)}
+              className="bg-indigo-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-indigo-700 transition-colors">
+              📁 Documents
+            </button>
+          )}
           <button type="button" onClick={() => navigate(-1)}
             className="bg-blue-500 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-blue-600 transition-colors">
             ← Back

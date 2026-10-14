@@ -1,6 +1,7 @@
 import { supabase } from '../../../lib/supabase'
 import { getCurrentProfile } from '../../../services/authService'
 import { notifyAdmins, notifyUser } from '../../../shared/services/notificationService'
+import { listOwnerStoragePaths, removeStoredFiles, profileOwner } from '../../documents/services/documentsService'
 
 const PAGE_SIZE = 50
 
@@ -149,6 +150,11 @@ export async function updateProfile(id, updates) {
 }
 
 export async function deleteProfile(id) {
+  // The person's document rows disappear with them, but the stored files would
+  // be left behind for good (ID photos included), so note the paths first and
+  // remove the files once the profile is really gone.
+  const paths = await listOwnerStoragePaths(profileOwner(id)).catch(() => [])
   const { error } = await supabase.from('profiles').delete().eq('id', id)
   if (error) throw error
+  await removeStoredFiles(paths)
 }

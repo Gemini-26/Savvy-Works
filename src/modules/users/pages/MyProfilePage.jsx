@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Mail, Phone, Building2, Pencil, Clock } from 'lucide-react'
+import { Mail, Phone, Building2, Pencil, Clock, FolderOpen, ChevronRight } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchActiveShift, clockInForWork, clockOutForWork, fetchShiftHistory, onWorkShiftChange } from '../../../shared/services/workShiftService'
 import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
@@ -123,6 +123,18 @@ export default function MyProfilePage({ profile }) {
           <Pencil size={14} /> Edit profile
         </Link>
       </div>
+
+      <Link
+        to="/profile/documents"
+        className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg flex items-center gap-3 hover:border-blue-300 transition-colors"
+      >
+        <FolderOpen size={20} className="text-amber-500 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold text-gray-900">My Documents</p>
+          <p className="text-xs text-gray-500">ID, driver's licence, photos and videos</p>
+        </div>
+        <ChevronRight size={16} className="text-gray-400 shrink-0" />
+      </Link>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-3">
         <div className="flex items-center gap-2 text-sm font-bold text-gray-900">

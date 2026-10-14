@@ -12,6 +12,7 @@ import MySchedulePage from '../modules/technician/pages/MySchedulePage'
 import ProfilePage from '../modules/technician/pages/ProfilePage'
 import MyToolsPage from '../modules/technician/pages/MyToolsPage'
 import MyProfilePage from '../modules/users/pages/MyProfilePage'
+import ProfileDocumentsPage from '../modules/users/pages/ProfileDocumentsPage'
 import NoProfileScreen from '../components/NoProfileScreen'
 
 export default function AppRoutes({ session }) {
@@ -49,6 +50,7 @@ export default function AppRoutes({ session }) {
             <Route path="schedule" element={<MySchedulePage profile={profile} />} />
             <Route path="tools" element={<MyToolsPage profile={profile} />} />
             <Route path="profile" element={<ProfilePage profile={profile} />} />
+            <Route path="profile/documents" element={<ProfileDocumentsPage profile={profile} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         ) : (
@@ -58,6 +60,7 @@ export default function AppRoutes({ session }) {
           >
             <Route index element={<Dashboard />} />
             <Route path="profile" element={<MyProfilePage profile={profile} />} />
+            <Route path="profile/documents" element={<ProfileDocumentsPage profile={profile} />} />
 
             {/* Lets non-technician staff (admins) accept/attend/complete their
                 own appointment assignments through the exact same flow a
