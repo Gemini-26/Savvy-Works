@@ -35,11 +35,18 @@ export function describeGeoCheck(status, distanceM, fenceM) {
   }
 }
 
-// Technician-facing wording for right after they clock in / out. Says nothing
-// when all is well.
-export function technicianGeoNotice(geo, verb) {
+// Technician-facing wording for right after they clock in / out. `pinConfirmed`
+// is whether the job's map pin is an address match or one an admin confirmed —
+// "confirmed at the site" is only claimed against a pin that can be trusted.
+export function technicianGeoNotice(geo, verb, pinConfirmed = true) {
   if (!geo) return null
   switch (geo.status) {
+    case 'inside': {
+      const away = geo.distance != null ? ` (about ${formatDistance(geo.distance)} from the pin)` : ''
+      return pinConfirmed
+        ? { tone: 'green', text: `Location confirmed — you ${verb} at the job site${away}.` }
+        : { tone: 'gray', text: `Your location was recorded near the job site${away}. The site’s map pin hasn’t been confirmed by your admin yet.` }
+    }
     case 'outside':
       return {
         tone: 'amber',

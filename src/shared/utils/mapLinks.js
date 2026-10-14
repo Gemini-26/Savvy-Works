@@ -19,6 +19,22 @@ export function googleSearchUrl(addressText) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addressText)}`
 }
 
+const isIOS = () =>
+  typeof navigator !== 'undefined'
+  && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+
+// Turn-by-turn directions to a site, opened in the phone's own maps app: iPhones
+// get Apple Maps, everything else gets Google Maps (Android hands the link to the
+// installed app). `destination` is { lat, lng } for a pin, or the address as text.
+export function directionsUrl(destination) {
+  if (typeof destination === 'string') {
+    const q = encodeURIComponent(destination)
+    return isIOS() ? `https://maps.apple.com/?daddr=${q}&dirflg=d` : `https://www.google.com/maps/dir/?api=1&destination=${q}&travelmode=driving`
+  }
+  const point = `${destination.lat},${destination.lng}`
+  return isIOS() ? `https://maps.apple.com/?daddr=${point}&dirflg=d` : `https://www.google.com/maps/dir/?api=1&destination=${point}&travelmode=driving`
+}
+
 // The street-level photos at a point.
 export function googleStreetViewUrl(lat, lng) {
   return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat}%2C${lng}`

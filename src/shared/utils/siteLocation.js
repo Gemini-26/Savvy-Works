@@ -11,6 +11,13 @@ export const MAX_RADIUS_M = 5000
 export const locationSearchKey = form =>
   [form.site_address, form.site_city, form.site_county, form.site_postcode].map(v => String(v || '').trim()).join('|')
 
+// Whether a job's pin can be trusted: an exact address match, or one an admin
+// placed or confirmed. An 'approx' point (street or suburb level) can be hundreds
+// of metres out, so it is never presented to a technician as "the site" — the
+// same rule the database uses before it will flag a clock-in as outside.
+export const isSitePinConfirmed = job =>
+  job?.site_lat != null && job?.site_lng != null && (job.site_geo_source === 'pin' || job.site_geo_source === 'address')
+
 // A job's site location as it sits in a form or row. These are the jobs
 // table's own column names, so the picker's patches merge straight into a form.
 export const BLANK_SITE_LOCATION = {

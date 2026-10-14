@@ -15,6 +15,8 @@ import { formatDateLong, formatTime, toDateStr } from '../../../shared/utils/for
 import { dayKeyFor, pictureDayKeys, pictureDayLabel } from '../../../shared/utils/photoDays'
 import { formatHoursDuration } from '../../../shared/utils/shiftSummary'
 import { technicianGeoNotice } from '../../../shared/utils/geoCheck'
+import { isSitePinConfirmed } from '../../../shared/utils/siteLocation'
+import SiteLocationCard from '../components/SiteLocationCard'
 
 export default function JobDetailPage({ profile }) {
   const { id } = useParams()
@@ -91,7 +93,7 @@ export default function JobDetailPage({ profile }) {
     setBusy(true)
     try {
       const geo = await clockIn(appt.assignmentId)
-      setGeoNotice(technicianGeoNotice(geo, 'clocked in'))
+      setGeoNotice(technicianGeoNotice(geo, 'clocked in', isSitePinConfirmed(appt.jobs)))
       await setAssignmentTeamMembers(appt.assignmentId, selectedTeamMemberIds)
       if (appt.status !== 'on_site') {
         await updateAppointmentStatus(appt.id, 'on_site')
@@ -118,7 +120,7 @@ export default function JobDetailPage({ profile }) {
     setBusy(true)
     try {
       const geo = await clockOut(appt.assignmentId)
-      setGeoNotice(technicianGeoNotice(geo, 'clocked out'))
+      setGeoNotice(technicianGeoNotice(geo, 'clocked out', isSitePinConfirmed(appt.jobs)))
       await load()
     } finally {
       setBusy(false)
@@ -251,7 +253,9 @@ export default function JobDetailPage({ profile }) {
       <div className="p-4 space-y-4">
         {geoNotice && (
           <div className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${
-            geoNotice.tone === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-gray-50 border-gray-200 text-gray-600'
+            geoNotice.tone === 'amber' ? 'bg-amber-50 border-amber-200 text-amber-800'
+              : geoNotice.tone === 'green' ? 'bg-green-50 border-green-200 text-green-800'
+              : 'bg-gray-50 border-gray-200 text-gray-600'
           }`}>
             <MapPin size={14} className="mt-0.5 shrink-0" />
             <p className="flex-1">{geoNotice.text}</p>
@@ -276,6 +280,7 @@ export default function JobDetailPage({ profile }) {
             <Clock size={14} />
             {formatDateLong(appt.scheduled_start)}, {formatTime(appt.scheduled_start)}–{formatTime(appt.scheduled_end)}
           </div>
+          {job && !isCompleted && <SiteLocationCard job={job} />}
           {appt.notes && <p className="text-sm text-gray-500 pt-1 border-t border-gray-100">{appt.notes}</p>}
           {(appt.actual_start || teamMembers.length > 0) && (
             <div className="pt-2 border-t border-gray-100 space-y-1.5">
