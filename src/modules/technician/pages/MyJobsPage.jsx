@@ -148,7 +148,11 @@ export default function MyJobsPage({ profile, basePath = '/jobs' }) {
   const isCancelled = a => a.status === 'cancelled' || a.jobs?.status === 'cancelled'
   const isDeclined  = a => a.status === 'declined'
   const isDone = a => isCompleted(a) || isDeclined(a) || isCancelled(a)
-  const sorted = [...appointments].sort((a, b) => new Date(b.scheduled_start) - new Date(a.scheduled_start))
+  // Newest booking first, so a visit that was just booked is at the top whatever
+  // day it is for; visits booked together fall back to the later day first.
+  const bookedAt = a => new Date(a.created_at || a.scheduled_start)
+  const sorted = [...appointments].sort((a, b) =>
+    bookedAt(b) - bookedAt(a) || new Date(b.scheduled_start) - new Date(a.scheduled_start))
   const active = sorted.filter(a => !isDone(a))
   const past = sorted.filter(isDone)
 

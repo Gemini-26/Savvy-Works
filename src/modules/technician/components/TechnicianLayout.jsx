@@ -3,6 +3,7 @@ import { Briefcase, CalendarDays, User, LogOut, Wrench } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import NotificationBell from '../../../shared/components/NotificationBell'
 import ClockBubble from '../../../shared/components/ClockBubble'
+import PolicyReminder from '../../policies/components/PolicyReminder'
 
 const tabs = [
   { to: '/', label: 'My Jobs', icon: Briefcase, end: true },
@@ -36,6 +37,7 @@ export default function TechnicianLayout({ profile }) {
       </header>
 
       <main className="flex-1 pb-20 overflow-y-auto">
+        <PolicyReminder profile={profile} className="mx-4 mt-4" />
         <Outlet />
       </main>
 

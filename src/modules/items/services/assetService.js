@@ -896,51 +896,26 @@ export async function fetchListQuantitiesForTechnician(technicianId) {
 // technician gets their own unit rather than sharing one with the
 // original — this is what lets an admin build a 100-item template
 // once and stamp out a fresh, independently-tracked copy per person.
+//
+// The copy happens inside the database (duplicate_asset_list), in one
+// transaction: a 100-item list used to take ~200 sequential requests
+// from the browser — minutes of spinner, and a pile of orphaned clones
+// if the admin navigated away part-way. Returns { id, name } of the copy.
 export async function duplicateAssetList(id, { name, assignedTo } = {}) {
-  const original = await fetchAssetList(id)
-  const nowIso = new Date().toISOString()
-
-  const newAssetIds = []
-  for (const item of original.items || []) {
-    const src = item.asset
-    const { data: clone, error } = await supabase
-      .from('assets')
-      .insert([{
-        name: src.name,
-        item_kind: src.item_kind,
-        asset_group: 'tool_inventory',
-        category_id: src.category_id || null,
-        value: src.value,
-        condition: src.condition || 'Good',
-        // A clone made for a technician is a fresh unit issued to them —
-        // their own kit, not a storeroom loan — so it gets the same
-        // ownership as an item created straight onto their list: owner
-        // is the technician and it rests `with_owner`. Leaving owner_id
-        // null here made every duplicated item look like storeroom stock
-        // and dumped a technician's whole toolkit into the Storeroom tab.
-        owner_id: assignedTo || null,
-        holder_id: assignedTo || null,
-        status: assignedTo ? 'with_owner' : 'warehouse',
-        since: assignedTo ? nowIso : null,
-      }])
-      .select()
-      .maybeSingle()
-    if (error) throw error
-    newAssetIds.push(clone.id)
-
-    if (assignedTo) {
-      await supabase.from('asset_checkout_log').insert([{
-        asset_id: clone.id, action: 'checked_out', to_id: assignedTo,
-        condition_out: clone.condition, comment_out: `Cloned from "${original.name}" list duplication`,
-      }])
-    }
-  }
-
-  const copy = await createAssetList({
-    name: name || `${original.name} (copy)`,
-    listType: original.list_type,
-    assignedTo: assignedTo || null,
-    assetIds: newAssetIds,
+  const listName = name?.trim() || null
+  const { data: newId, error } = await supabase.rpc('duplicate_asset_list', {
+    p_list_id: id,
+    p_name: listName,
+    p_assigned_to: assignedTo || null,
   })
-  return copy
+  if (error) throw error
+
+  if (assignedTo) {
+    await notifyUser(assignedTo, {
+      title: 'Tool list assigned',
+      body: listName ? `You've been assigned the "${listName}" list.` : "You've been assigned a new list.",
+      link: '/tools',
+    }).catch(() => {})
+  }
+  return { id: newId, name: listName }
 }

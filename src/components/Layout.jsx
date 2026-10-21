@@ -6,11 +6,13 @@ import {
   DollarSign, Users, Package, Receipt, UserCircle2,
   BarChart2, FolderOpen, Settings, ChevronDown,
   LogOut, Menu, X, BookOpen, MessageSquare, Bell,
-  Handshake, User, LayoutDashboard, Palette
+  Handshake, User, LayoutDashboard, Palette, PenLine
 } from 'lucide-react'
 import NotificationBell from '../shared/components/NotificationBell'
 import ThemePicker from '../shared/components/ThemePicker'
 import ClockBubble from '../shared/components/ClockBubble'
+import PolicyReminder from '../modules/policies/components/PolicyReminder'
+import { usePolicyProgress } from '../modules/policies/hooks/usePolicyProgress'
 import { useCurrentUser } from '../hooks/useCurrentUser'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -262,6 +264,7 @@ const NAV = [
     children: [
       { label: 'Attachments',              path: '/files/attachments' },
       { label: 'Digital Documents',        path: '/files/documents' },
+      { label: 'Policies & Signatures',    path: '/files/policies' },
       { label: 'Completed Questionnaires', path: '/files/questionnaires' },
     ],
   },
@@ -377,6 +380,7 @@ export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
   const { profile } = useCurrentUser()
+  const policies = usePolicyProgress(profile)
   const initial = profile?.full_name?.trim().charAt(0).toUpperCase() || '?'
 
   // Close everything on route change
@@ -543,6 +547,7 @@ export default function Layout() {
 
       {/* Page content */}
       <main className="flex-1 p-4 md:p-6 max-w-screen-2xl mx-auto w-full">
+        <PolicyReminder profile={profile} className="mb-4" />
         <Outlet/>
       </main>
 
@@ -566,6 +571,13 @@ export default function Layout() {
           <NavLink to="/profile" onClick={() => setUserOpen(false)}
             className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg mx-1">
             <User size={14}/> My Profile
+          </NavLink>
+          <NavLink to="/profile/policies" onClick={() => setUserOpen(false)}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg mx-1">
+            <PenLine size={14}/> Policies &amp; Procedures
+            {policies.outstanding > 0 && (
+              <span className="ml-auto min-w-5 h-5 px-1.5 rounded-full bg-red-600 text-white text-[11px] font-bold leading-5 text-center">{policies.outstanding}</span>
+            )}
           </NavLink>
           <div className="my-1 border-t border-gray-100"/>
           <div className="flex items-center gap-1.5 px-4 pt-1.5 pb-1.5 text-[10px] font-bold text-gray-400 uppercase tracking-widest">

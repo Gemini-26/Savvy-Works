@@ -17,7 +17,7 @@ export async function fetchMyAppointments(technicianId) {
     .select(`
       id, actual_start, actual_end,
       appointments(
-        id, scheduled_start, scheduled_end, status, notes, job_id,
+        id, scheduled_start, scheduled_end, status, notes, job_id, created_at,
         jobs(id, job_ref, title, priority, status, completed_at, archived_at, site_address, site_city, customers(customer_name, telephone, mobile))
       )
     `)

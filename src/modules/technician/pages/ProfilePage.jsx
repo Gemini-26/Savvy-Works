@@ -10,6 +10,7 @@ import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import BackgroundAccessCard from '../../../shared/components/BackgroundAccessCard'
 import ThemePicker from '../../../shared/components/ThemePicker'
+import PolicyCard from '../../policies/components/PolicyCard'
 import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 import { describeOnSiteCrew } from '../../../shared/utils/shiftSummary'
 
@@ -130,6 +131,8 @@ export default function ProfilePage({ profile }) {
         </div>
         <ChevronRight size={16} className="text-gray-400 shrink-0" />
       </Link>
+
+      <PolicyCard profile={profile} className="p-4" />
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-bold text-gray-900">

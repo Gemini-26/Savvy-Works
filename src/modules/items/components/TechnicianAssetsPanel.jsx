@@ -13,7 +13,7 @@ import { formatCurrency } from '../../../shared/utils/formatCurrency'
 
 const inputCls = 'px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 
-function ListCard({ list, technicians, categories, adminProfile, recallByAssetId, onChanged }) {
+function ListCard({ list, technicians, categories, adminProfile, recallByAssetId, onChanged, onNotice }) {
   const [renaming, setRenaming] = useState(false)
   const [name, setName] = useState(list.name)
   const [adding, setAdding] = useState(false)
@@ -57,6 +57,11 @@ function ListCard({ list, technicians, categories, adminProfile, recallByAssetId
     try {
       await duplicateAssetList(list.id, { name: newName, assignedTo })
       setDuplicating(false)
+      // The copy lands on whoever it was assigned to, which is usually not
+      // the technician whose panel this is — say where it went, or it looks
+      // like nothing happened.
+      const target = technicians.find(t => t.id === assignedTo)
+      onNotice?.(`Duplicated "${list.name}" as "${newName.trim()}" — ${target ? `assigned to ${target.full_name}` : 'unassigned'}.`)
       onChanged()
     } catch (err) {
       setError(err.message || 'Failed to duplicate')
@@ -246,6 +251,7 @@ function ListTypeTab({ technician, listType, technicians, categories, adminProfi
   const [recallByAssetId, setRecallByAssetId] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [notice, setNotice] = useState(null)
   const [creatingName, setCreatingName] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -289,9 +295,15 @@ function ListTypeTab({ technician, listType, technicians, categories, adminProfi
   return (
     <div className="space-y-3">
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>}
+      {notice && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm px-4 py-3 rounded-lg flex items-start justify-between gap-3">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} className="text-green-700 shrink-0" aria-label="Dismiss">✕</button>
+        </div>
+      )}
 
       {lists.map(list => (
-        <ListCard key={list.id} list={list} technicians={technicians} categories={categories} adminProfile={adminProfile} recallByAssetId={recallByAssetId} onChanged={load} />
+        <ListCard key={list.id} list={list} technicians={technicians} categories={categories} adminProfile={adminProfile} recallByAssetId={recallByAssetId} onChanged={load} onNotice={setNotice} />
       ))}
 
       <div className="bg-white rounded-xl border border-dashed border-gray-300 p-4 flex gap-2">

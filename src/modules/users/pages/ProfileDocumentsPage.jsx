@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 import { fetchProfile } from '../services/profileService'
 import DocumentsWorkspace, { DocumentsShell } from '../../documents/components/DocumentsWorkspace'
+import PolicyCard from '../../policies/components/PolicyCard'
 
 // "My Documents" for one person. Reached two ways:
 //   /users/:id/documents   an admin looking at someone's documents
@@ -60,6 +61,7 @@ export default function ProfileDocumentsPage({ profile: profileProp }) {
       ownerKind="profile"
       ownerId={owner.id}
       canManage={isAdmin}
+      topSlot={isSelf ? <PolicyCard profile={me} className="p-4" /> : null}
     />
   )
 }

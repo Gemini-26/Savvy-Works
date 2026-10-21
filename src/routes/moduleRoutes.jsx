@@ -17,6 +17,8 @@ import UserDetailPage from '../modules/users/pages/UserDetailPage'
 import ProfileDocumentsPage from '../modules/users/pages/ProfileDocumentsPage'
 import TeamMemberDocumentsPage from '../modules/users/pages/TeamMemberDocumentsPage'
 import CompanyDocumentsPage from '../modules/documents/pages/CompanyDocumentsPage'
+import PoliciesAdminPage from '../modules/policies/pages/PoliciesAdminPage'
+import PolicyAdminDetailPage from '../modules/policies/pages/PolicyAdminDetailPage'
 import UserLogsPage from '../modules/users/pages/UserLogsPage'
 import UserActivityLogPage from '../modules/users/pages/UserActivityLogPage'
 import TimePlannerPage from '../modules/planner/pages/TimePlannerPage'
@@ -230,6 +232,8 @@ export const moduleRoutes = [
   // ── File Manager ──────────────────────────────────────────────────────────
   { path: 'files/attachments',    title: 'Attachments' },
   { path: 'files/documents',      element: <CompanyDocumentsPage />,                        title: 'Digital Documents' },
+  { path: 'files/policies',       element: <PoliciesAdminPage />,                           title: 'Policies & Signatures' },
+  { path: 'files/policies/:id',   element: <PolicyAdminDetailPage />,                       title: 'Policy' },
   { path: 'files/questionnaires', title: 'Completed Questionnaires' },
 
   // ── Settings ──────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ export function DocumentsShell({ compact, children }) {
 // The page around one explorer: title, who can see it, optional Back button,
 // and the Documents / Activity tabs (same look as a job's tabs). Every
 // "documents" page — a person's, a team member's, the company's — is this.
-export default function DocumentsWorkspace({ compact, title, subtitle, onBack, ownerKind, ownerId, canManage, rootLabel }) {
+export default function DocumentsWorkspace({ compact, title, subtitle, onBack, ownerKind, ownerId, canManage, rootLabel, topSlot }) {
   const [activeTab, setActiveTab] = useState('Documents')
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -37,6 +37,8 @@ export default function DocumentsWorkspace({ compact, title, subtitle, onBack, o
           </button>
         )}
       </div>
+
+      {topSlot}
 
       <div className="flex border-b border-gray-300 overflow-x-auto">
         {TABS.map(tab => (

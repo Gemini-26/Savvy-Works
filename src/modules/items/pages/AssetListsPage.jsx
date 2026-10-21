@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
+import DuplicateListModal from '../components/DuplicateListModal'
 import {
   fetchAssetLists, createAssetList, updateAssetList, deleteAssetList,
   duplicateAssetList, addListItem, removeListItem, fetchAssets, fetchTechnicians, updateListItemQuantity,
@@ -159,6 +160,9 @@ export default function AssetListsPage() {
   const [error, setError] = useState(null)
   const [editingList, setEditingList] = useState(null)
   const [creating, setCreating] = useState(false)
+  const [duplicating, setDuplicating] = useState(null)
+  const [dupBusy, setDupBusy] = useState(false)
+  const [notice, setNotice] = useState(null)
 
   useEffect(() => { load() }, [tab])
 
@@ -181,12 +185,19 @@ export default function AssetListsPage() {
     }
   }
 
-  async function handleDuplicate(list) {
+  async function handleDuplicate({ name, assignedTo }) {
+    setDupBusy(true)
+    setError(null)
     try {
-      await duplicateAssetList(list.id)
+      await duplicateAssetList(duplicating.id, { name, assignedTo })
+      const target = technicians.find(t => t.id === assignedTo)
+      setNotice(`Duplicated "${duplicating.name}" as "${name.trim()}" — ${target ? `assigned to ${target.full_name}` : 'unassigned'}.`)
+      setDuplicating(null)
       await load()
     } catch (err) {
       setError(err.message || 'Failed to duplicate list')
+    } finally {
+      setDupBusy(false)
     }
   }
 
@@ -221,6 +232,12 @@ export default function AssetListsPage() {
       </div>
 
       {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-lg">{error}</div>}
+      {notice && (
+        <div className="bg-green-50 border border-green-200 text-green-800 text-sm px-4 py-3 rounded-lg flex items-start justify-between gap-3">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} className="text-green-700 shrink-0" aria-label="Dismiss">✕</button>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-sm text-gray-400">Loading lists…</p>
@@ -241,7 +258,7 @@ export default function AssetListsPage() {
                 </div>
                 <div className="flex gap-3 text-xs">
                   <button onClick={() => setEditingList(list)} className="text-blue-600 font-medium">Edit</button>
-                  <button onClick={() => handleDuplicate(list)} className="text-gray-600 font-medium">Duplicate</button>
+                  <button onClick={() => setDuplicating(list)} className="text-gray-600 font-medium">Duplicate</button>
                   <button onClick={() => handleDelete(list)} className="text-red-600 font-medium">Delete</button>
                 </div>
               </div>
@@ -260,6 +277,11 @@ export default function AssetListsPage() {
       {editingList && (
         <ListEditorModal list={editingList} listType={editingList.list_type} technicians={technicians} allAssets={allAssets}
           onClose={() => setEditingList(null)} onSaved={() => { setEditingList(null); load() }} />
+      )}
+
+      {duplicating && (
+        <DuplicateListModal list={duplicating} technicians={technicians} saving={dupBusy}
+          onClose={() => setDuplicating(null)} onConfirm={handleDuplicate} />
       )}
 
       {creating && (
