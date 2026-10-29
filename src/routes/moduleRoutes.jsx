@@ -20,6 +20,7 @@ import CompanyDocumentsPage from '../modules/documents/pages/CompanyDocumentsPag
 import PoliciesAdminPage from '../modules/policies/pages/PoliciesAdminPage'
 import PolicyAdminDetailPage from '../modules/policies/pages/PolicyAdminDetailPage'
 import UserLogsPage from '../modules/users/pages/UserLogsPage'
+import FaceClockPage from '../modules/users/pages/FaceClockPage'
 import UserActivityLogPage from '../modules/users/pages/UserActivityLogPage'
 import TimePlannerPage from '../modules/planner/pages/TimePlannerPage'
 import ItemsPage from '../modules/items/pages/ItemsPage'
@@ -166,6 +167,7 @@ export const moduleRoutes = [
   { path: 'users/active',        element: <UsersPage activeOnly={true} />,         title: 'Active Users' },
   { path: 'users/inactive',      element: <UsersPage activeOnly={false} />,        title: 'Inactive Users' },
   { path: 'users/logs',          element: <UserLogsPage />,                        title: 'User Logs' },
+  { path: 'users/face',          element: <FaceClockPage />,                       title: 'Face Clock-in' },
   { path: 'users/logs/:id',      element: <UserActivityLogPage />,                 title: 'User Activity Log' },
   { path: 'users/:id',           element: <UserDetailPage />,                      title: 'User' },
   { path: 'users/:id/documents', element: <ProfileDocumentsPage />,                 title: 'User Documents' },

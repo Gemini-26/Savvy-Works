@@ -28,9 +28,27 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // The face library is a 1.3 MB chunk only people who clock in with
+        // their face need; it's cached at runtime (below) instead of being
+        // downloaded by every device that installs the app.
+        globIgnores: ['**/face-api*.js'],
         navigateFallbackDenylist: [/^\/api/],
         // The single app bundle sits just over workbox's 2 MiB default.
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+        // The face library and its models (~7 MB) are fetched the first time
+        // someone clocks in with their face, then kept so field staff on
+        // mobile data never download them twice.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.startsWith('/models/face/') || /^\/assets\/face-api/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'face-models',
+              expiration: { maxEntries: 10 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
       },
     }),
   ],

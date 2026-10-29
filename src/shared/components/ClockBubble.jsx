@@ -4,6 +4,9 @@ import { Clock, X, MapPin, MapPinOff } from 'lucide-react'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { useLocationTracking } from '../../hooks/useLocationTracking'
 import { fetchActiveShift, clockInForWork, clockOutForWork, onWorkShiftChange } from '../services/workShiftService'
+import { useFaceCheck } from '../hooks/useFaceCheck'
+import { fetchFaceEnrolment } from '../services/faceService'
+import { preloadFaceEngine } from '../utils/faceEngine'
 
 function formatElapsed(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
@@ -41,15 +44,28 @@ export default function ClockBubble() {
   }, [shift])
 
   const location = useLocationTracking(shift?.id ?? null)
+  const { askFace, recordFace, faceDialog } = useFaceCheck()
+
+  // Anyone who clocks in with their face gets the face models fetched quietly
+  // ahead of time, so the first clock-in of the day doesn't wait on them.
+  useEffect(() => {
+    if (!profile?.id) return
+    fetchFaceEnrolment()
+      .then(e => { if (e.profileIds.has(profile.id)) preloadFaceEngine() })
+      .catch(() => {})
+  }, [profile?.id])
 
   if (!profile?.id || !loaded) return null
 
   async function handleClockIn() {
     setBusy(true)
     try {
+      const face = await askFace('shift_in')
+      if (!face) return
       const s = await clockInForWork(profile.id)
       setShift(s)
       setNow(Date.now())
+      recordFace('shift_in', face, { shiftId: s.id })
     } finally {
       setBusy(false)
     }
@@ -58,7 +74,10 @@ export default function ClockBubble() {
   async function handleClockOut() {
     setBusy(true)
     try {
+      const face = await askFace('shift_out')
+      if (!face) return
       await clockOutForWork(shift.id)
+      recordFace('shift_out', face, { shiftId: shift.id })
       setShift(null)
       setOpen(false)
     } finally {
@@ -156,6 +175,7 @@ export default function ClockBubble() {
         <Clock size={16} className={shift ? 'animate-pulse' : ''} />
         {shift ? elapsed : 'Clock In'}
       </button>
+      {faceDialog}
     </div>
   )
 }

@@ -45,6 +45,15 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Camera, for face clock-in (a selfie at each clock-in). The page asks
+         for the camera itself with getUserMedia, and Capacitor's WebView
+         client turns that into this Android prompt — but only if the
+         permission is declared here first. Not required, so phones without a
+         front camera can still install the app. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
+
     <!-- Location. FINE/COARSE are the normal "while using the app" grant;
          BACKGROUND_LOCATION is the separate, second grant Android calls
          "Allow all the time" and is what keeps GPS reporting once the phone

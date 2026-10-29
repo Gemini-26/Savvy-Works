@@ -190,6 +190,7 @@ const NAV = [
           { label: 'Active Users',   path: '/users/active' },
           { label: 'Inactive Users', path: '/users/inactive' },
           { label: 'User Logs',      path: '/users/logs' },
+          { label: 'Face Clock-in',  path: '/users/face' },
         ],
       },
       {

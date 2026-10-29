@@ -8,6 +8,7 @@ import { fetchActiveShift, clockInForWork, clockOutForWork, fetchShiftHistory, o
 import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 import BackgroundAccessCard from '../../../shared/components/BackgroundAccessCard'
+import { useFaceCheck } from '../../../shared/hooks/useFaceCheck'
 
 function formatDuration(ms) {
   const totalMinutes = Math.round(ms / 60000)
@@ -21,6 +22,7 @@ export default function MyProfilePage({ profile }) {
   const [history, setHistory] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
+  const { askFace, recordFace, faceDialog } = useFaceCheck()
 
   function loadHistory(profileId) {
     return fetchShiftHistory(profileId, 200).then(setHistory)
@@ -45,8 +47,11 @@ export default function MyProfilePage({ profile }) {
   async function handleClockIn() {
     setBusy(true)
     try {
+      const face = await askFace('shift_in')
+      if (!face) return
       const s = await clockInForWork(profile.id)
       setShift(s)
+      recordFace('shift_in', face, { shiftId: s.id })
     } finally {
       setBusy(false)
     }
@@ -55,7 +60,10 @@ export default function MyProfilePage({ profile }) {
   async function handleClockOut() {
     setBusy(true)
     try {
+      const face = await askFace('shift_out')
+      if (!face) return
       await clockOutForWork(shift.id)
+      recordFace('shift_out', face, { shiftId: shift.id })
       setShift(null)
       await loadHistory(profile.id)
     } finally {
@@ -223,6 +231,8 @@ export default function MyProfilePage({ profile }) {
           </div>
         )}
       </div>
+
+      {faceDialog}
     </PageContainer>
   )
 }

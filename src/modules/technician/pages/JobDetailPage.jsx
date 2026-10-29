@@ -8,6 +8,7 @@ import { fetchJobPhotos, uploadJobPhotos, deleteJobPhoto, fetchJobDocuments, upl
 import { fetchAssignmentTeamMembers, setAssignmentTeamMembers } from '../../users/services/teamMembersService'
 import CompleteJobModal from '../../jobs/components/CompleteJobModal'
 import SelectTeamModal from '../components/SelectTeamModal'
+import { useFaceCheck } from '../../../shared/hooks/useFaceCheck'
 import BookVisitModal from '../components/BookVisitModal'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import PhotoPicker from '../../../shared/components/PhotoPicker'
@@ -48,6 +49,7 @@ export default function JobDetailPage({ profile }) {
   // Shown after a clock-in/out whose location check wasn't clean.
   const [geoNotice, setGeoNotice] = useState(null)
   const docFileRef = useRef(null)
+  const { askFace, recordFace, faceDialog } = useFaceCheck()
 
   async function load() {
     const data = await fetchMyAppointment(id, profile.id)
@@ -90,26 +92,44 @@ export default function JobDetailPage({ profile }) {
     }
   }
 
-  async function handleClockInConfirm(selectedTeamMemberIds) {
+  // Helpers recognised by face on the technician's phone: record a check for
+  // each, now that they're on the visit.
+  function recordTeamFaces(faceChecks) {
+    faceChecks.forEach(({ teamMemberId, face }) => {
+      recordFace('team_in', face, { assignmentId: appt.assignmentId, teamMemberId })
+    })
+  }
+
+  async function handleClockInConfirm(selectedTeamMemberIds, teamFaces = []) {
     setBusy(true)
+    let backedOut = false
     try {
+      const face = await askFace('site_in')
+      if (!face) {
+        // Cancelled the face check: stay on "Who's with you?" rather than lose the picks.
+        backedOut = true
+        return
+      }
       const geo = await clockIn(appt.assignmentId)
       setGeoNotice(technicianGeoNotice(geo, 'clocked in', isSitePinConfirmed(appt.jobs)))
       await setAssignmentTeamMembers(appt.assignmentId, selectedTeamMemberIds)
+      recordFace('site_in', face, { assignmentId: appt.assignmentId })
+      recordTeamFaces(teamFaces)
       if (appt.status !== 'on_site') {
         await updateAppointmentStatus(appt.id, 'on_site')
       }
       await load()
     } finally {
       setBusy(false)
-      setShowSelectTeam(false)
+      if (!backedOut) setShowSelectTeam(false)
     }
   }
 
-  async function handleEditTeamConfirm(selectedTeamMemberIds) {
+  async function handleEditTeamConfirm(selectedTeamMemberIds, teamFaces = []) {
     setBusy(true)
     try {
       await setAssignmentTeamMembers(appt.assignmentId, selectedTeamMemberIds)
+      recordTeamFaces(teamFaces)
       await load()
       setShowEditTeam(false)
     } finally {
@@ -120,8 +140,11 @@ export default function JobDetailPage({ profile }) {
   async function handleClockOut() {
     setBusy(true)
     try {
+      const face = await askFace('site_out')
+      if (!face) return
       const geo = await clockOut(appt.assignmentId)
       setGeoNotice(technicianGeoNotice(geo, 'clocked out', isSitePinConfirmed(appt.jobs)))
+      recordFace('site_out', face, { assignmentId: appt.assignmentId })
       await load()
     } finally {
       setBusy(false)
@@ -601,6 +624,7 @@ export default function JobDetailPage({ profile }) {
       {showSelectTeam && (
         <SelectTeamModal
           busy={busy}
+          allowFace
           onConfirm={handleClockInConfirm}
           onClose={() => setShowSelectTeam(false)}
         />
@@ -609,6 +633,7 @@ export default function JobDetailPage({ profile }) {
       {showEditTeam && (
         <SelectTeamModal
           busy={busy}
+          allowFace
           existing={teamMembers}
           onConfirm={handleEditTeamConfirm}
           onClose={() => setShowEditTeam(false)}
@@ -633,6 +658,8 @@ export default function JobDetailPage({ profile }) {
           onCancel={() => setConfirmClockOut(false)}
         />
       )}
+
+      {faceDialog}
     </div>
   )
 }
