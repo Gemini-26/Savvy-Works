@@ -58,7 +58,8 @@ const STATUS_COLORS = {
 const ACTIVITY_DOT_COLORS = {
   job_created:               'bg-blue-500',
   job_updated:                'bg-gray-400',
-  technician_assigned:        'bg-indigo-500',
+  customer_emailed:           'bg-green-500',
+  technician_assigned:       'bg-indigo-500',
   technician_reassigned:      'bg-indigo-500',
   technician_accepted:        'bg-blue-500',
   technician_declined:        'bg-red-500',

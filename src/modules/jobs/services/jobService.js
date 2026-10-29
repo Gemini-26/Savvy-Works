@@ -155,6 +155,24 @@ export async function createJob(job) {
   return created
 }
 
+// Emails the customer that their job is booked. The job's own "Alert Customer"
+// tickbox is checked server-side too, so this is safe to call for any job.
+// Resolves to { sent_to } on success, { skipped: true } if nothing was due, and
+// throws with the server's reason (no email on file, sender not verified, …).
+export async function emailCustomerJobBooked(jobId) {
+  const { data, error } = await supabase.functions.invoke('notify-customer-job', {
+    body: { job_id: jobId },
+  })
+  if (error) {
+    const body = await error.context?.json?.().catch(() => null)
+    throw new Error(body?.error || error.message)
+  }
+  if (data?.sent_to) {
+    await logActivity(jobId, 'customer_emailed', `Customer alerted by email (${data.sent_to})`).catch(() => {})
+  }
+  return data
+}
+
 export async function updateJob(id, updates, activityNote) {
   const { data, error } = await supabase
     .from('jobs')

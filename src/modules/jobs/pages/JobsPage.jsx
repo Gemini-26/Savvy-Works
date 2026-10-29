@@ -54,6 +54,10 @@ export default function JobsPage({ statusFilter }) {
   const [error,       setError]       = useState(null)
   const { search, setSearch, filters, setFilters, debouncedSearch, debouncedFilters, filterKey } = useListFilters()
   const [staff, setStaff] = useState([])
+  // Set by NewJobPage after a save (e.g. whether the customer was emailed).
+  const [notice, setNotice] = useState(location.state?.notice ?? null)
+
+  useEffect(() => { setNotice(location.state?.notice ?? null) }, [location.key])
 
   useEffect(() => { fetchStaffOptions().then(setStaff).catch(() => {}) }, [])
 
@@ -135,6 +139,17 @@ export default function JobsPage({ statusFilter }) {
           + New Job
         </button>
       </div>
+
+      {notice && (
+        <div className={`flex items-start justify-between gap-3 text-sm px-4 py-3 rounded-lg mb-4 border ${
+          notice.kind === 'success'
+            ? 'bg-green-50 border-green-200 text-green-800'
+            : 'bg-amber-50 border-amber-200 text-amber-800'
+        }`}>
+          <span>{notice.text}</span>
+          <button type="button" onClick={() => setNotice(null)} aria-label="Dismiss" className="font-bold leading-none">×</button>
+        </div>
+      )}
 
       <FilterBar
         search={search}

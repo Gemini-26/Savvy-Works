@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
-import { createJob } from '../services/jobService'
+import { createJob, emailCustomerJobBooked } from '../services/jobService'
 import { supabase } from '../../../lib/supabase'
 import { CUSTOMER_TYPE_LABELS as BASE_CUSTOMER_TYPES } from '../../../shared/constants/customerTypes'
 import { JOB_TYPES } from '../../../shared/constants/jobTypes'
@@ -333,7 +333,7 @@ export default function NewJobPage() {
       // customer_company/address/city/county/postcode/country only exist on
       // the customers table — the jobs table only has site_* columns.
       const { customer_company, customer_address, customer_city, customer_county, customer_postcode, customer_country, ...jobForm } = form
-      await createJob({
+      const created = await createJob({
         ...jobForm,
         status:        form.status.toLowerCase().replace(/ /g, '_'),
         priority:      form.priority.toLowerCase(),
@@ -348,7 +348,25 @@ export default function NewJobPage() {
         start_date:    form.start_date    || null,
         complete_by:   form.complete_by   || null,
       })
-      navigate('/jobs/active')
+
+      // The job is saved by now, so an email problem must not look like a failed
+      // save (and must not leave Save clickable — that would create a duplicate).
+      // Carry the outcome to the list instead, where it's shown as a notice.
+      let notice = null
+      if (form.alert_by_email && created?.id) {
+        try {
+          const result = await emailCustomerJobBooked(created.id)
+          if (result?.sent_to) {
+            notice = { kind: 'success', text: `Job saved. ${result.sent_to} has been emailed.` }
+          }
+        } catch (mailErr) {
+          notice = {
+            kind: 'warning',
+            text: `Job saved, but the customer was not emailed: ${mailErr.message || 'unknown error'}`,
+          }
+        }
+      }
+      navigate('/jobs/active', { state: notice ? { notice } : undefined })
     } catch (err) {
       setError(err.message || 'Failed to save job')
       setSaving(false)
