@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Bell, CheckCircle2, X } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
@@ -7,6 +7,8 @@ import { useCurrentUser } from '../../../hooks/useCurrentUser'
 import ProgressBar from '../components/ProgressBar'
 import PolicyContent from '../components/PolicyContent'
 import PublishPolicyDialog from '../components/PublishPolicyDialog'
+import FillInLinesPicker from '../components/FillInLinesPicker'
+import { pickerFields, persistableFields } from '../policyBlanks'
 import {
   fetchPolicy, fetchPolicyOverviewData, fetchSignatureImage, remindPeople,
   setPolicyStatus, updatePolicyDetails, deletePolicy, POLICIES_CHANGED,
@@ -37,18 +39,24 @@ function Modal({ title, onClose, children, wide }) {
   )
 }
 
-function EditDetails({ doc, onClose, onSaved }) {
+function EditDetails({ doc, signedCount, onClose, onSaved }) {
   const [title, setTitle] = useState(doc.title)
   const [description, setDescription] = useState(doc.description || '')
   const [audience, setAudience] = useState(doc.audience)
+  const [fields, setFields] = useState(() => pickerFields(doc.content_html, doc.fill_fields))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  // Once anyone has signed, the lines they were asked to fill in are part of what they signed.
+  const linesLocked = signedCount > 0
 
   async function save() {
     setBusy(true)
     setError(null)
     try {
-      await updatePolicyDetails(doc.id, { title, description, audience })
+      await updatePolicyDetails(doc.id, {
+        title, description, audience,
+        ...(linesLocked || !fields.length ? {} : { fillFields: persistableFields(fields) }),
+      })
       onSaved()
     } catch (err) {
       setError(err.message || 'Could not save')
@@ -75,6 +83,10 @@ function EditDetails({ doc, onClose, onSaved }) {
             {Object.entries(AUDIENCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </div>
+        <FillInLinesPicker
+          fields={fields} onChange={setFields} disabled={linesLocked || busy}
+          note={linesLocked ? 'Someone has already signed this document, so its fill-in lines can no longer be changed. Upload a new version to change them.' : null}
+        />
         <div className="flex gap-2 justify-end pt-1">
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600">Cancel</button>
           <button type="button" disabled={busy || !title.trim()} onClick={save} className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white disabled:opacity-50">
@@ -109,6 +121,9 @@ function SignatureModal({ signatureId, onClose }) {
             <dt className="text-gray-500">Signed by</dt><dd className="font-semibold text-gray-900">{sig.signer_name}</dd>
             <dt className="text-gray-500">Date &amp; time</dt><dd className="text-gray-900">{formatDateTime(sig.signed_at)}</dd>
             <dt className="text-gray-500">Document</dt><dd className="text-gray-900">{sig.document_title} (version {sig.document_version})</dd>
+            {Array.isArray(sig.field_answers) && sig.field_answers.map(a => (
+              <Fragment key={a.n}><dt className="text-gray-500">{a.label}</dt><dd className="font-semibold text-gray-900 break-words">{a.value}</dd></Fragment>
+            ))}
             <dt className="text-gray-500">Agreed to</dt><dd className="text-gray-900">“{sig.statement}”</dd>
             {sig.ip_address && <><dt className="text-gray-500">IP address</dt><dd className="text-gray-900">{sig.ip_address}</dd></>}
             <dt className="text-gray-500">Fingerprint</dt><dd className="text-[11px] text-gray-600 break-all">{sig.content_hash}</dd>
@@ -305,7 +320,7 @@ export default function PolicyAdminDetailPage() {
           <PolicyContent html={doc.content_html} />
         </Modal>
       )}
-      {dialog === 'edit' && <EditDetails doc={doc} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); load() }} />}
+      {dialog === 'edit' && <EditDetails doc={doc} signedCount={signed.length} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); load() }} />}
       {dialog === 'version' && (
         <PublishPolicyDialog replacing={doc} onClose={() => setDialog(null)}
           onPublished={newId => { setDialog(null); navigate(`/files/policies/${newId}`) }} />

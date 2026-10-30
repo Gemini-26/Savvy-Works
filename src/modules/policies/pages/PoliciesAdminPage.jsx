@@ -6,7 +6,7 @@ import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 import ProgressBar from '../components/ProgressBar'
-import PublishPolicyDialog from '../components/PublishPolicyDialog'
+import AddPoliciesDialog from '../components/AddPoliciesDialog'
 import { fetchPolicyOverviewData, remindPeople, POLICIES_CHANGED } from '../services/policyService'
 import { buildOverview, percent, AUDIENCE_LABELS } from '../policyStats'
 import { formatDate } from '../../../shared/utils/formatDate'
@@ -79,11 +79,11 @@ export default function PoliciesAdminPage() {
     <PageContainer>
       <PageHeader
         title="Policies & Signatures"
-        subtitle="Publish a policy, then see who has read, agreed and signed it."
+        subtitle="Publish policies and procedures — as many as you like at once — then see who has read, agreed and signed them."
         actions={
           <button type="button" onClick={() => setAdding(true)}
             className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors">
-            + Add document
+            + Add documents
           </button>
         }
       />
@@ -100,8 +100,8 @@ export default function PoliciesAdminPage() {
       {overview && active.length === 0 && older.length === 0 && (
         <EmptyState
           title="No documents yet"
-          description="Add a Word document (a policy, procedure or code of conduct) and everyone it applies to will be asked to read and sign it."
-          action={<button type="button" onClick={() => setAdding(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ Add document</button>}
+          description="Add Word documents (policies, procedures, codes of conduct — several at once is fine) and everyone they apply to will be asked to read and sign them."
+          action={<button type="button" onClick={() => setAdding(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ Add documents</button>}
         />
       )}
 
@@ -213,9 +213,14 @@ export default function PoliciesAdminPage() {
       )}
 
       {adding && (
-        <PublishPolicyDialog
+        <AddPoliciesDialog
+          existingTitles={(data?.docs || []).filter(d => d.status === 'active').map(d => d.title)}
           onClose={() => setAdding(false)}
-          onPublished={id => { setAdding(false); navigate(`/files/policies/${id}`) }}
+          onPublished={ids => {
+            setAdding(false)
+            if (ids.length === 1) navigate(`/files/policies/${ids[0]}`)
+            else setNotice(`Published ${ids.length} documents. Everyone they apply to has been asked to read and sign.`)
+          }}
         />
       )}
     </PageContainer>

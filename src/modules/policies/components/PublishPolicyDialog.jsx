@@ -1,13 +1,12 @@
 import { useRef, useState } from 'react'
 import { FileUp, X, AlertTriangle } from 'lucide-react'
 import PolicyContent from './PolicyContent'
-import { docxToHtml, publishPolicy } from '../services/policyService'
+import FillInLinesPicker from './FillInLinesPicker'
+import { docxToHtml, publishPolicy, titleFromFileName } from '../services/policyService'
+import { detectBlanks, persistableFields } from '../policyBlanks'
 import { AUDIENCE_LABELS } from '../policyStats'
 
 const inputCls = 'w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
-
-// "Health_and-Safety policy.docx" -> "Health and Safety policy"
-const titleFromFile = name => name.replace(/\.docx$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
 
 // Pick a Word file, check how it will look to staff, publish it.
 // With `replacing` set it publishes the next version of that document instead,
@@ -16,6 +15,7 @@ export default function PublishPolicyDialog({ replacing = null, onClose, onPubli
   const fileInput = useRef(null)
   const [file, setFile] = useState(null)
   const [parsed, setParsed] = useState(null)   // { html, warnings }
+  const [fields, setFields] = useState([])     // the document's "______" lines, and which of them people fill in
   const [title, setTitle] = useState(replacing?.title || '')
   const [description, setDescription] = useState(replacing?.description || '')
   const [audience, setAudience] = useState(replacing?.audience || 'all')
@@ -29,11 +29,14 @@ export default function PublishPolicyDialog({ replacing = null, onClose, onPubli
     if (!picked) return
     setError(null)
     setParsed(null)
+    setFields([])
     setFile(picked)
     setReading(true)
     try {
-      setParsed(await docxToHtml(picked))
-      if (!title.trim()) setTitle(titleFromFile(picked.name))
+      const read = await docxToHtml(picked)
+      setFields(detectBlanks(read.html))
+      setParsed(read)
+      if (!title.trim()) setTitle(titleFromFileName(picked.name))
     } catch (err) {
       setFile(null)
       setError(err.message || 'Could not read that file.')
@@ -48,6 +51,7 @@ export default function PublishPolicyDialog({ replacing = null, onClose, onPubli
     try {
       const id = await publishPolicy({
         title, description, audience, html: parsed.html, fileName: file.name, replaces: replacing?.id ?? null,
+        fillFields: persistableFields(fields),
       })
       onPublished(id)
     } catch (err) {
@@ -113,10 +117,12 @@ export default function PublishPolicyDialog({ replacing = null, onClose, onPubli
                 </details>
               )}
 
+              <FillInLinesPicker fields={fields} disabled={busy} onChange={setFields} />
+
               <div>
                 <p className="text-xs font-medium text-gray-500 mb-1">This is exactly what people will read — check it before publishing</p>
                 <div className="border border-gray-200 rounded-lg p-4 max-h-80 overflow-y-auto bg-white">
-                  <PolicyContent html={parsed.html} />
+                  <PolicyContent html={parsed.html} fields={fields.filter(f => f.include)} />
                 </div>
               </div>
             </>

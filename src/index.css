@@ -50,3 +50,19 @@ html, body, #root {
 .policy-prose table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: .92em; display: block; overflow-x: auto; }
 .policy-prose th, .policy-prose td { border: 1px solid color-mix(in srgb, currentColor 30%, transparent); padding: .4em .6em; vertical-align: top; text-align: left; }
 .policy-prose th { font-weight: 700; background: color-mix(in srgb, currentColor 8%, transparent); }
+
+/* Fill-in lines: the "Name: ______" blanks of a Word document, as boxes people type into. */
+.policy-prose input.policy-blank {
+  display: inline-block; max-width: 100%; margin: 0 .15em; padding: .1em .4em;
+  font: inherit; font-size: max(16px, 1em); /* 16px+ stops phones zooming in on focus */
+  color: inherit; background: color-mix(in srgb, #2563eb 6%, transparent);
+  border: 0; border-bottom: 1.5px solid color-mix(in srgb, currentColor 55%, transparent); border-radius: 3px 3px 0 0;
+}
+.policy-prose input.policy-blank::placeholder { color: inherit; opacity: .4; }
+.policy-prose input.policy-blank:placeholder-shown { background: color-mix(in srgb, #f59e0b 14%, transparent); border-bottom-color: #d97706; }
+.policy-prose input.policy-blank:focus { outline: none; border-bottom-color: #2563eb; background: color-mix(in srgb, #2563eb 12%, transparent); }
+.policy-prose input.policy-blank[readonly] { background: transparent; border-bottom: 1px solid color-mix(in srgb, currentColor 40%, transparent); font-weight: 600; }
+.policy-prose .policy-blank-sig {
+  display: inline-block; padding: .05em .5em; font-size: .85em; font-style: italic; border-radius: 999px;
+  background: color-mix(in srgb, currentColor 8%, transparent); opacity: .8;
+}

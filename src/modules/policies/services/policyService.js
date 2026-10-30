@@ -44,7 +44,7 @@ export async function fetchPolicy(id) {
 export async function fetchMySignature(documentId, profileId) {
   const { data, error } = await supabase
     .from('policy_signatures')
-    .select('id, signed_at, signature_image, signer_name, content_hash, document_version, statement')
+    .select('id, signed_at, signature_image, signer_name, content_hash, document_version, statement, field_answers')
     .eq('document_id', documentId)
     .eq('profile_id', profileId)
     .maybeSingle()
@@ -54,12 +54,14 @@ export async function fetchMySignature(documentId, profileId) {
 
 // ── Signing ──────────────────────────────────────────────────────────────────
 
-export async function signPolicy(documentId, signatureDataUrl) {
+// `answers` are the typed-in fill-in lines: [{ n, label, value }].
+export async function signPolicy(documentId, signatureDataUrl, answers = null) {
   const { data, error } = await supabase.rpc('sign_policy_document', {
     p_document_id: documentId,
     p_signature: signatureDataUrl,
     p_agreed: true,
     p_user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    p_answers: answers?.length ? answers : null,
   })
   if (error) throw error
   notifyPoliciesChanged()
@@ -91,7 +93,7 @@ export async function fetchPolicyOverviewData() {
 export async function fetchSignatureImage(signatureId) {
   const { data, error } = await supabase
     .from('policy_signatures')
-    .select('id, signer_name, signature_image, signed_at, document_title, document_version, content_hash, statement, ip_address')
+    .select('id, signer_name, signature_image, signed_at, document_title, document_version, content_hash, statement, ip_address, field_answers')
     .eq('id', signatureId)
     .maybeSingle()
   if (error) throw error
@@ -135,9 +137,16 @@ export async function docxToHtml(file) {
   return { html, warnings }
 }
 
+// "Health_and-Safety policy.docx" -> "Health and Safety policy"
+export const titleFromFileName = name => name.replace(/\.docx$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim()
+
 // Publishes a new document, or a new version of an existing one (everyone has
-// to sign it again), then tells the people it applies to.
-export async function publishPolicy({ title, description, audience, html, fileName, replaces = null }) {
+// to sign it again), then tells the people it applies to. `quiet` skips the
+// notification and the refresh event, for batches that send one combined
+// notification per person at the end (see publishPolicies). `fillFields` is
+// which of the document's blank lines people type into (see persistableFields
+// in policyBlanks); left out, the app's own guess is used.
+export async function publishPolicy({ title, description, audience, html, fileName, replaces = null, fillFields = null, quiet = false }) {
   const { data: id, error } = await supabase.rpc('publish_policy_document', {
     p_title: title,
     p_description: description || null,
@@ -147,6 +156,13 @@ export async function publishPolicy({ title, description, audience, html, fileNa
     p_replaces: replaces,
   })
   if (error) throw error
+  if (fillFields) {
+    // The document is already published by now, so a failure here must not look
+    // like a failed publish (a retry would publish it twice) — it just keeps the
+    // app's default guess at which lines to fill in.
+    await supabase.from('policy_documents').update({ fill_fields: fillFields }).eq('id', id)
+  }
+  if (quiet) return id
 
   await notifyAudience({ id, title, audience }, replaces
     ? `A new version of "${title}" needs your signature.`
@@ -155,10 +171,37 @@ export async function publishPolicy({ title, description, audience, html, fileNa
   return id
 }
 
-export async function updatePolicyDetails(id, { title, description, audience }) {
+// Publishes several new documents one after another. One failing document does
+// not stop the rest: `onResult(key, { id } | { error })` reports each as it
+// finishes. Afterwards every person gets ONE notification covering whatever
+// applies to them (a single document links straight to it), not one per file.
+// Resolves to the list of documents that did publish.
+export async function publishPolicies(items, onResult) {
+  const published = []
+  for (const item of items) {
+    try {
+      const id = await publishPolicy({ ...item, quiet: true })
+      published.push({ id, title: item.title, audience: item.audience })
+      onResult?.(item.key, { id })
+    } catch (err) {
+      onResult?.(item.key, { error: err.message || 'Could not publish this document.' })
+    }
+  }
+  if (published.length) {
+    await notifyBatch(published).catch(() => {})
+    notifyPoliciesChanged()
+  }
+  return published
+}
+
+// `fillFields` left undefined leaves the document's fill-in lines alone; the
+// database refuses to change them once anyone has signed.
+export async function updatePolicyDetails(id, { title, description, audience, fillFields }) {
+  const changes = { title: title.trim(), description: description?.trim() || null, audience }
+  if (fillFields !== undefined) changes.fill_fields = fillFields
   const { error } = await supabase
     .from('policy_documents')
-    .update({ title: title.trim(), description: description?.trim() || null, audience })
+    .update(changes)
     .eq('id', id)
   if (error) throw error
   notifyPoliciesChanged()
@@ -193,6 +236,20 @@ async function notifyAudience(doc, body) {
   const people = (await activePeople()).filter(p => appliesTo(doc, p.role))
   if (!people.length) return
   const rows = people.map(p => ({ user_id: p.id, title: 'Document to sign', body, link: `/profile/policies/${doc.id}` }))
+  const { error } = await supabase.from('notifications').insert(rows)
+  if (error) throw error
+}
+
+async function notifyBatch(docs) {
+  const rows = []
+  for (const person of await activePeople()) {
+    const mine = docs.filter(d => appliesTo(d, person.role))
+    if (!mine.length) continue
+    rows.push(mine.length === 1
+      ? { user_id: person.id, title: 'Document to sign', body: `"${mine[0].title}" needs your signature.`, link: `/profile/policies/${mine[0].id}` }
+      : { user_id: person.id, title: 'Documents to sign', body: `${mine.length} documents need your signature.`, link: '/profile/policies' })
+  }
+  if (!rows.length) return
   const { error } = await supabase.from('notifications').insert(rows)
   if (error) throw error
 }
