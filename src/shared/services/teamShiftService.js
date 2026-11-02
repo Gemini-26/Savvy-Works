@@ -50,6 +50,22 @@ export async function fetchOpenTeamShifts() {
   return data || []
 }
 
+// Company-wide: most recent completed clock-ins for every team member, newest
+// first — the team half of the User Timesheets report.
+export async function fetchTeamShiftHistoryForCompany(limit = 100) {
+  const { data, error } = await supabase
+    .from('team_member_shifts')
+    .select(SHIFT_SELECT)
+    .not('clock_out', 'is', null)
+    .order('clock_in', { ascending: false })
+    .limit(limit)
+  if (error) {
+    if (isMissingTable(error)) return []
+    throw error
+  }
+  return data || []
+}
+
 // One team member's clock history, newest first.
 export async function fetchTeamMemberShifts(teamMemberId, limit = 200) {
   const { data, error } = await supabase
@@ -117,6 +133,35 @@ export async function clockOutTeamMember(shiftId) {
     .select('id')
   if (error) throw error
   if (!data?.length) throw new Error('Already clocked out')
+  notifyTeamShiftChanged()
+}
+
+// Admin correction of a team member's clock-in/out (e.g. nobody tapped Clock
+// out at the end of the day). The database refuses this for anyone but an
+// admin and keeps the original times. Leaving clock_out empty keeps — or
+// reopens — the clock-in. The reason is kept in the row's note.
+export async function adjustTeamShiftTimes(shiftId, { clock_in, clock_out }, reason = '') {
+  if (!clock_in) throw new Error('Clock-in time is required')
+  if (clock_out && new Date(clock_out) <= new Date(clock_in)) throw new Error('Clock-out must be after clock-in')
+  const limit = Date.now() + 60_000
+  if (new Date(clock_in) > limit || (clock_out && new Date(clock_out) > limit)) {
+    throw new Error("Times can't be in the future")
+  }
+
+  const updates = { clock_in, clock_out: clock_out || null }
+  if (!clock_out) updates.clocked_out_by = null
+  if (reason.trim()) updates.note = reason.trim()
+
+  const { data, error } = await supabase
+    .from('team_member_shifts')
+    .update(updates)
+    .eq('id', shiftId)
+    .select('id')
+  if (error) {
+    if (error.code === '23505') throw new Error('They already have an open clock-in — close that one first')
+    throw error
+  }
+  if (!data?.length) throw new Error('Update failed — no rows were changed. Check your permissions.')
   notifyTeamShiftChanged()
 }
 
