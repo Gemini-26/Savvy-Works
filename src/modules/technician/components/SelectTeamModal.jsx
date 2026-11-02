@@ -13,7 +13,17 @@ import FaceEnrolFlow from '../../../shared/components/FaceEnrolFlow'
 // holding the phone up to their face. onConfirm(ids, faceChecks) then also
 // carries who was recognised that way — [{ teamMemberId, face }] — so the
 // screen can record a face check for each once the clock-in has happened.
-export default function SelectTeamModal({ onConfirm, onClose, busy, existing = null, allowFace = false }) {
+//
+// The floating clock button reuses this picker to clock team members in on
+// their own (not as part of a job): `heading` / `intro` / `confirmLabel`
+// reword it, `disabledIds` greys out anyone already clocked in,
+// `requireSelection` stops it confirming with nobody picked, and `children`
+// (e.g. the drop-off job picker) sit above the buttons.
+export default function SelectTeamModal({
+  onConfirm, onClose, busy, existing = null, allowFace = false,
+  heading = null, intro = null, confirmLabel = null, busyLabel = null,
+  disabledIds = null, requireSelection = false, confirmDisabled = false, children = null,
+}) {
   const editing = existing !== null
   const [members, setMembers] = useState([])
   const [selected, setSelected] = useState(() => (existing || []).map(m => m.id))
@@ -77,6 +87,10 @@ export default function SelectTeamModal({ onConfirm, onClose, busy, existing = n
       }
       // A helper the technician hasn't loaded yet (e.g. just activated) still counts.
       setMembers(prev => prev.some(m => m.id === match.id) ? prev : [...prev, { id: match.id, full_name: match.name }])
+      if (disabledIds?.has(match.id)) {
+        setScanNote({ tone: 'amber', text: `${match.name} is already clocked in.` })
+        return
+      }
       select(match.id)
       setFaces(prev => ({ ...prev, [match.id]: captured }))
       setScanNote({ tone: 'green', text: `${match.name} recognised and added.` })
@@ -95,23 +109,26 @@ export default function SelectTeamModal({ onConfirm, onClose, busy, existing = n
   }
 
   function handleConfirm() {
-    const faceChecks = selected.filter(id => faces[id]).map(id => ({ teamMemberId: id, face: faces[id] }))
-    onConfirm(selected, faceChecks)
+    const ids = selected.filter(id => !disabledIds?.has(id))
+    const faceChecks = ids.filter(id => faces[id]).map(id => ({ teamMemberId: id, face: faces[id] }))
+    onConfirm(ids, faceChecks)
   }
+
+  const pickedCount = selected.filter(id => !disabledIds?.has(id)).length
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm max-h-[85vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-          <h2 className="text-base font-bold text-gray-900">{editing ? 'Team on this job' : "Who's with you?"}</h2>
+          <h2 className="text-base font-bold text-gray-900">{heading || (editing ? 'Team on this job' : "Who's with you?")}</h2>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
         <div className="px-5 py-4 space-y-3">
           <p className="text-sm text-gray-500">
-            {editing
+            {intro || (editing
               ? "Add anyone who joined you on this job. They share the on-site time already clocked."
-              : "Select any team members clocking in with you on this job. You can leave this blank if you're on your own."}
+              : "Select any team members clocking in with you on this job. You can leave this blank if you're on your own.")}
           </p>
 
           {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded">{error}</div>}
@@ -138,15 +155,17 @@ export default function SelectTeamModal({ onConfirm, onClose, busy, existing = n
           ) : (
             <div className="space-y-1.5 max-h-64 overflow-y-auto">
               {members.map(m => {
-                const isSelected = selected.includes(m.id)
-                const canEnrol = allowFace && !m.is_casual && !enrolledIds.has(m.id)
+                const isDisabled = !!disabledIds?.has(m.id)
+                const isSelected = !isDisabled && selected.includes(m.id)
+                const canEnrol = allowFace && !m.is_casual && !enrolledIds.has(m.id) && !isDisabled
                 return (
                   <div
                     key={m.id}
-                    className={`flex items-center gap-2 rounded-lg border transition-colors ${isSelected ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}
+                    className={`flex items-center gap-2 rounded-lg border transition-colors ${isDisabled ? 'border-gray-200 bg-gray-50 opacity-60' : isSelected ? 'border-blue-400 bg-blue-50' : 'border-gray-200'}`}
                   >
                     <button
                       type="button"
+                      disabled={isDisabled}
                       onClick={() => toggle(m.id)}
                       className="flex-1 min-w-0 flex items-center gap-3 text-left px-3 py-2.5"
                     >
@@ -157,6 +176,7 @@ export default function SelectTeamModal({ onConfirm, onClose, busy, existing = n
                         <span className="block text-sm font-medium text-gray-900 truncate">
                           {m.full_name}
                           {m.is_casual && <span className="ml-1.5 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 align-middle">Casual</span>}
+                          {isDisabled && <span className="ml-1.5 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-1.5 py-0.5 align-middle">Clocked in</span>}
                           {faces[m.id] && isSelected && <Check size={12} className="inline ml-1.5 text-green-600 align-middle" aria-label="Face recognised" />}
                         </span>
                         {m.role_title && <span className="block text-xs text-gray-500 truncate">{m.role_title}</span>}
@@ -211,16 +231,20 @@ export default function SelectTeamModal({ onConfirm, onClose, busy, existing = n
             </button>
           )}
 
+          {children}
+
           <div className="flex gap-3 pt-2">
             <button
               type="button"
-              disabled={busy}
+              disabled={busy || confirmDisabled || (requireSelection && pickedCount === 0)}
               onClick={handleConfirm}
               className="flex-1 bg-blue-600 text-white py-2 rounded text-sm font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
-              {editing
-                ? (busy ? 'Saving…' : 'Save Team')
-                : busy ? 'Clocking in…' : selected.length > 0 ? `Clock In with ${selected.length} team member${selected.length === 1 ? '' : 's'}` : 'Clock In Alone'}
+              {confirmLabel
+                ? (busy ? (busyLabel || 'Clocking in…') : confirmLabel(pickedCount))
+                : editing
+                  ? (busy ? 'Saving…' : 'Save Team')
+                  : busy ? 'Clocking in…' : selected.length > 0 ? `Clock In with ${selected.length} team member${selected.length === 1 ? '' : 's'}` : 'Clock In Alone'}
             </button>
             <button
               type="button"

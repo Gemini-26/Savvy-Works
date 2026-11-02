@@ -5,6 +5,8 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
 import { fetchTeamMembers, createTeamMember, updateTeamMember, setTeamMemberActive } from '../services/teamMembersService'
+import { fetchOpenTeamShifts, onTeamShiftChange } from '../../../shared/services/teamShiftService'
+import { formatTime } from '../../../shared/utils/formatDate'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 
 const inputCls = 'w-full px-3 py-2 text-sm rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
@@ -35,6 +37,16 @@ export default function ActiveTeamMembersPage({ activeOnly = true }) {
   }
 
   useEffect(() => { load() }, [activeOnly])
+
+  // Who is clocked in right now (member id -> their open clock-in).
+  const [clockedIn, setClockedIn] = useState({})
+  useEffect(() => {
+    const refresh = () => fetchOpenTeamShifts()
+      .then(rows => setClockedIn(Object.fromEntries(rows.map(r => [r.team_member_id, r]))))
+      .catch(() => {})
+    refresh()
+    return onTeamShiftChange(refresh)
+  }, [])
 
   function set(field, value) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -221,6 +233,14 @@ export default function ActiveTeamMembersPage({ activeOnly = true }) {
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${m.is_active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
                         {m.is_active ? 'Active' : 'Inactive'}
                       </span>
+                      {clockedIn[m.id] && (
+                        <span
+                          className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700"
+                          title={clockedIn[m.id].site_label || undefined}
+                        >
+                          Clocked in {formatTime(clockedIn[m.id].clock_in)}
+                        </span>
+                      )}
                     </td>
                     {isAdmin && (
                       <td className="px-5 py-3 text-right whitespace-nowrap">

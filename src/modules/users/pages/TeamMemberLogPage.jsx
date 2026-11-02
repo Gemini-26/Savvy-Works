@@ -5,11 +5,20 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import OnSiteHoursSummary from '../../../shared/components/OnSiteHoursSummary'
 import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import { fetchTeamMember, fetchTeamMemberOnSiteSessions } from '../services/teamMembersService'
+import { fetchTeamMemberShifts } from '../../../shared/services/teamShiftService'
+import { formatDate, formatTime } from '../../../shared/utils/formatDate'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 
-// A team member (labourer/helper) has no login, so there is no day shift to
-// show — their record is purely the on-site sessions a technician logged them
-// onto, and the hours those add up to.
+function formatSpan(from, to) {
+  const minutes = Math.max(0, Math.round(((to ? new Date(to) : new Date()) - new Date(from)) / 60000))
+  const h = Math.floor(minutes / 60)
+  return h > 0 ? `${h}h ${String(minutes % 60).padStart(2, '0')}m` : `${minutes}m`
+}
+
+// A team member (labourer/helper) has no login. Their record has two parts:
+// the clock-ins a technician did for them from the floating clock button
+// (their day), and the on-site sessions a technician logged them onto, with
+// the hours those add up to.
 export default function TeamMemberLogPage() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -17,14 +26,16 @@ export default function TeamMemberLogPage() {
 
   const [member, setMember] = useState(null)
   const [sessions, setSessions] = useState([])
+  const [clockIns, setClockIns] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    Promise.all([fetchTeamMember(id), fetchTeamMemberOnSiteSessions(id)])
-      .then(([memberData, sessionData]) => {
+    Promise.all([fetchTeamMember(id), fetchTeamMemberOnSiteSessions(id), fetchTeamMemberShifts(id)])
+      .then(([memberData, sessionData, shiftData]) => {
         setMember(memberData)
         setSessions(sessionData)
+        setClockIns(shiftData)
       })
       .catch(err => setError(err.message || 'Failed to load team member log'))
       .finally(() => setLoading(false))
@@ -69,6 +80,36 @@ export default function TeamMemberLogPage() {
           <Phone size={13} className="text-gray-400" /> {member.phone}
         </p>
       )}
+
+      <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-2xl mb-4">
+        <div className="flex items-center gap-2 text-sm font-bold text-gray-900 mb-1">
+          <Clock size={16} /> Clock-ins ({clockIns.length})
+        </div>
+        <p className="text-[11px] text-gray-400 mb-3">
+          Clocked in and out by a technician from the clock button — either with them, or when dropping them off at a site.
+        </p>
+        {clockIns.length === 0 ? (
+          <p className="text-sm text-gray-400">This team member hasn't been clocked in yet.</p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {clockIns.map(c => (
+              <div key={c.id} className="py-2.5 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900">
+                    {formatDate(c.clock_in)} · {formatTime(c.clock_in)} – {c.clock_out ? formatTime(c.clock_out) : <span className="text-emerald-600">still clocked in</span>}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">
+                    {c.mode === 'drop_off' ? `Dropped off${c.site_label ? ` at ${c.site_label}` : ''}` : 'With the technician'}
+                    {c.clocked_in_by_profile?.full_name ? ` · In by ${c.clocked_in_by_profile.full_name}` : ''}
+                    {c.clock_out && c.clocked_out_by_profile?.full_name ? ` · Out by ${c.clocked_out_by_profile.full_name}` : ''}
+                  </p>
+                </div>
+                <span className="text-sm font-semibold text-gray-700 tabular-nums shrink-0">{formatSpan(c.clock_in, c.clock_out)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-2xl mb-4 space-y-3">
         <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
