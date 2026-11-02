@@ -16,13 +16,15 @@ import FaceEnrolFlow from '../../../shared/components/FaceEnrolFlow'
 //
 // The floating clock button reuses this picker to clock team members in on
 // their own (not as part of a job): `heading` / `intro` / `confirmLabel`
-// reword it, `disabledIds` greys out anyone already clocked in,
-// `requireSelection` stops it confirming with nobody picked, and `children`
-// (e.g. the drop-off job picker) sit above the buttons.
+// reword it, `disabledIds` greys out anyone already clocked in, `hiddenIds`
+// leaves people out of the list altogether (a technician isn't shown team
+// members someone else clocked in), `requireSelection` stops it confirming
+// with nobody picked, and `children` (e.g. the drop-off job picker) sit above
+// the buttons.
 export default function SelectTeamModal({
   onConfirm, onClose, busy, existing = null, allowFace = false,
   heading = null, intro = null, confirmLabel = null, busyLabel = null,
-  disabledIds = null, requireSelection = false, confirmDisabled = false, children = null,
+  disabledIds = null, hiddenIds = null, requireSelection = false, confirmDisabled = false, children = null,
 }) {
   const editing = existing !== null
   const [members, setMembers] = useState([])
@@ -83,6 +85,11 @@ export default function SelectTeamModal({
       const match = await identifyTeamMember(captured.descriptors[0])
       if (!match) {
         setScanNote({ tone: 'amber', text: "That face wasn't recognised. Pick them from the list below, or set up their face." })
+        return
+      }
+      if (hiddenIds?.has(match.id)) {
+        // Deliberately no name: they aren't one of this person's team members.
+        setScanNote({ tone: 'amber', text: 'That team member is already clocked in.' })
         return
       }
       // A helper the technician hasn't loaded yet (e.g. just activated) still counts.
@@ -154,7 +161,7 @@ export default function SelectTeamModal({
             <p className="text-sm text-gray-400">No team members registered yet. Ask your admin to add them under Active Team Members.</p>
           ) : (
             <div className="space-y-1.5 max-h-64 overflow-y-auto">
-              {members.map(m => {
+              {members.filter(m => !hiddenIds?.has(m.id)).map(m => {
                 const isDisabled = !!disabledIds?.has(m.id)
                 const isSelected = !isDisabled && selected.includes(m.id)
                 const canEnrol = allowFace && !m.is_casual && !enrolledIds.has(m.id) && !isDisabled

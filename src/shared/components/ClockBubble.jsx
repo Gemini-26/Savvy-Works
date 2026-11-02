@@ -188,7 +188,13 @@ export default function ClockBubble() {
   }
 
   const elapsed = shift ? formatElapsed(now - new Date(shift.clock_in).getTime()) : null
-  const clockedInTeamIds = new Set(openTeamShifts.map(t => t.team_member_id))
+  // In the picker: the people this person can see are greyed out as clocked in;
+  // everyone else who is clocked in (another technician's) is left out of the
+  // list entirely, so a technician never sees them anywhere on the bubble.
+  const clockedInTeamIds = new Set(teamShifts.map(t => t.team_member_id))
+  const hiddenTeamIds = new Set(
+    openTeamShifts.map(t => t.team_member_id).filter(id => !clockedInTeamIds.has(id)),
+  )
 
   return (
     <div className="fixed bottom-20 lg:bottom-6 right-4 z-[9997] select-none">
@@ -352,6 +358,7 @@ export default function ClockBubble() {
           busyLabel="Clocking in…"
           busy={teamBusy}
           disabledIds={clockedInTeamIds}
+          hiddenIds={hiddenTeamIds}
           requireSelection
           confirmDisabled={teamModal === 'dropoff' && !dropJob}
           onConfirm={handleTeamClockIn}
