@@ -11,6 +11,8 @@ const resendApiKey   = Deno.env.get('RESEND_API_KEY') ?? ''
 // Same secret as send-invoice-receipt / notify-customer-status — once a real
 // domain is verified in Resend, setting it once fixes all three.
 const fromEmail      = Deno.env.get('RECEIPT_FROM_EMAIL') ?? 'onboarding@resend.dev'
+// The sending address is a no-reply one with no mailbox, so replies go here instead.
+const replyTo        = Deno.env.get('REPLY_TO_EMAIL') ?? 'sales@savvyplumbing.co.za'
 
 const adminClient = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -20,6 +22,19 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   })
+}
+
+// Resend answers a refusal with { name, message }. Staff see this on screen, so
+// say what it actually objected to rather than a bare "failed". The two common
+// causes are the sending domain not being verified yet, and the sandbox sender
+// (which only delivers to the Resend account's own address).
+function describeResendFailure(status: number, body: string) {
+  let message = ''
+  try { message = JSON.parse(body)?.message ?? '' } catch { /* not JSON */ }
+  if (/not verified|verify (a|your) domain|testing emails/i.test(message || body)) {
+    return 'The sending domain isn’t verified in Resend yet, so customer emails can’t go out. Add the DNS records Resend lists for the domain, then click Verify there.'
+  }
+  return message ? `The email service refused it: ${message}` : `The email service refused it (error ${status}).`
 }
 
 // Job text is typed by staff and ends up in an email body, so it's escaped.
@@ -133,6 +148,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         from: `${companyName} <${fromEmail}>`,
+        reply_to: replyTo,
         to: [recipientEmail],
         subject: `Your job has been booked${job.job_ref ? ` — ${job.job_ref}` : ''}`,
         html:
@@ -146,15 +162,7 @@ Deno.serve(async (req) => {
     if (!resendResp.ok) {
       const body = await resendResp.text()
       console.error('notify-customer-job: Resend error', resendResp.status, body)
-      // Resend's sandbox sender refuses everyone but the account owner. Say so
-      // plainly instead of a bare "failed", so the cause is obvious on screen.
-      if (resendResp.status === 403 && /verify a domain|testing emails/i.test(body)) {
-        return json({
-          error: 'Customer emails can’t be delivered yet — a sending domain still needs to be verified in Resend.',
-          code: 'sandbox_sender',
-        }, 502)
-      }
-      return json({ error: 'Failed to send email' }, 502)
+      return json({ error: describeResendFailure(resendResp.status, body) }, 502)
     }
 
     return json({ ok: true, sent_to: recipientEmail })

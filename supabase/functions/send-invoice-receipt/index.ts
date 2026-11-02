@@ -13,10 +13,23 @@ const resendApiKey   = Deno.env.get('RESEND_API_KEY') ?? ''
 // this for "receipts@yourdomain.co.za" once a real domain is verified in
 // Resend, so receipts can go to any customer.
 const fromEmail      = Deno.env.get('RECEIPT_FROM_EMAIL') ?? 'onboarding@resend.dev'
+// The sending address is a no-reply one with no mailbox, so replies go here instead.
+const replyTo        = Deno.env.get('REPLY_TO_EMAIL') ?? 'sales@savvyplumbing.co.za'
 
 const adminClient = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 })
+
+// Resend answers a refusal with { name, message }. Staff see this on screen, so
+// say what it actually objected to rather than a bare "failed".
+function describeResendFailure(status: number, body: string) {
+  let message = ''
+  try { message = JSON.parse(body)?.message ?? '' } catch { /* not JSON */ }
+  if (/not verified|verify (a|your) domain|testing emails/i.test(message || body)) {
+    return 'The sending domain isn’t verified in Resend yet, so customer emails can’t go out. Add the DNS records Resend lists for the domain, then click Verify there.'
+  }
+  return message ? `The email service refused it: ${message}` : `The email service refused it (error ${status}).`
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -101,6 +114,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         from: `Savvy Civils and Plumbing <${fromEmail}>`,
+        reply_to: replyTo,
         to: [recipientEmail],
         subject: `Receipt for ${invoice.invoice_ref || label}`,
         html: `<p>Hi ${customerName},</p>${paidLine}<p>If you have any questions, just reply to this email.</p>`,
@@ -114,7 +128,7 @@ Deno.serve(async (req) => {
     if (!resendResp.ok) {
       const body = await resendResp.text()
       console.error('send-invoice-receipt: Resend error', resendResp.status, body)
-      return new Response(JSON.stringify({ error: 'Failed to send email' }), {
+      return new Response(JSON.stringify({ error: describeResendFailure(resendResp.status, body) }), {
         status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }

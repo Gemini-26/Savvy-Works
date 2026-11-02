@@ -9,6 +9,8 @@ const supabaseUrl    = Deno.env.get('SUPABASE_URL') ?? ''
 const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 const resendApiKey   = Deno.env.get('RESEND_API_KEY') ?? ''
 const fromEmail      = Deno.env.get('RECEIPT_FROM_EMAIL') ?? 'onboarding@resend.dev'
+// The sending address is a no-reply one with no mailbox, so replies go here instead.
+const replyTo        = Deno.env.get('REPLY_TO_EMAIL') ?? 'sales@savvyplumbing.co.za'
 
 const adminClient = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
@@ -110,6 +112,7 @@ Deno.serve(async (req) => {
       },
       body: JSON.stringify({
         from: `Savvy Civils and Plumbing <${fromEmail}>`,
+        reply_to: replyTo,
         to: [recipientEmail],
         subject: 'Your technician is on the way',
         html: `<p>Hi ${customerName},</p><p>${messageFor(jobLabel)}</p>`,
