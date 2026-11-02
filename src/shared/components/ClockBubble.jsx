@@ -31,16 +31,17 @@ function formatSince(ms) {
 const formatClockTime = value => new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
 export default function ClockBubble() {
-  const { profile } = useCurrentUser()
+  const { profile, isAdmin } = useCurrentUser()
   const [shift, setShift] = useState(null)
   const [loaded, setLoaded] = useState(false)
   const [now, setNow] = useState(Date.now())
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  // Team members clocked in from this button — by this person or any other
-  // technician, so anyone can clock out someone who was dropped off.
-  const [teamShifts, setTeamShifts] = useState([])
+  // Everyone on the team who is clocked in, company-wide. What the bubble
+  // SHOWS is narrower (see teamShifts below); the full set is only used to
+  // grey out already-clocked-in people in the picker.
+  const [openTeamShifts, setOpenTeamShifts] = useState([])
   const [teamModal, setTeamModal] = useState(null)       // null | 'with' | 'dropoff'
   const [dropJob, setDropJob] = useState(null)
   const [teamBusy, setTeamBusy] = useState(false)
@@ -62,7 +63,7 @@ export default function ClockBubble() {
 
   useEffect(() => {
     if (!profile?.id) return
-    const refresh = () => fetchOpenTeamShifts().then(setTeamShifts).catch(() => {})
+    const refresh = () => fetchOpenTeamShifts().then(setOpenTeamShifts).catch(() => {})
     refresh()
     return onTeamShiftChange(refresh)
   }, [profile?.id])
@@ -71,8 +72,12 @@ export default function ClockBubble() {
   // last looked — catch up whenever the panel is opened.
   useEffect(() => {
     if (!open || !profile?.id) return
-    fetchOpenTeamShifts().then(setTeamShifts).catch(() => {})
+    fetchOpenTeamShifts().then(setOpenTeamShifts).catch(() => {})
   }, [open, profile?.id])
+
+  // Admins see every team member who is clocked in. A technician only sees the
+  // ones they clocked in themselves — not another technician's people.
+  const teamShifts = isAdmin ? openTeamShifts : openTeamShifts.filter(t => t.clocked_in_by === profile?.id)
 
   const ticking = !!shift || teamShifts.length > 0
   useEffect(() => {
@@ -176,14 +181,14 @@ export default function ClockBubble() {
       setTeamNote({ tone: 'green', text: `${t.team_members?.full_name || 'Team member'} clocked out.` })
     } catch (err) {
       setTeamNote({ tone: 'amber', text: err.message || 'Could not clock them out.' })
-      fetchOpenTeamShifts().then(setTeamShifts).catch(() => {})
+      fetchOpenTeamShifts().then(setOpenTeamShifts).catch(() => {})
     } finally {
       setOutBusyId(null)
     }
   }
 
   const elapsed = shift ? formatElapsed(now - new Date(shift.clock_in).getTime()) : null
-  const clockedInTeamIds = new Set(teamShifts.map(t => t.team_member_id))
+  const clockedInTeamIds = new Set(openTeamShifts.map(t => t.team_member_id))
 
   return (
     <div className="fixed bottom-20 lg:bottom-6 right-4 z-[9997] select-none">
