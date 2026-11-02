@@ -140,7 +140,7 @@ export default function ClockBubble() {
   async function handleTeamClockIn(ids) {
     const dropOff = teamModal === 'dropoff'
     if (dropOff && !dropJob) {
-      setTeamError('Pick the job site you are dropping them at.')
+      setTeamError('Pick or type the job site you are dropping them at.')
       return
     }
     setTeamBusy(true)
@@ -151,7 +151,7 @@ export default function ClockBubble() {
         job: dropOff ? dropJob : null,
       })
       if (done.length > 0) {
-        const where = dropOff ? ` at ${dropJob.job_ref || 'the job site'}` : ''
+        const where = dropOff ? ` at ${dropJob.job_ref || dropJob.site_text || 'the job site'}` : ''
         const who = `${done.length} team member${done.length === 1 ? '' : 's'}`
         setTeamNote(failed.length > 0
           ? { tone: 'amber', text: `${who} clocked in${where}. ${failed.length} could not be: ${failed[0].message}.` }
@@ -339,7 +339,7 @@ export default function ClockBubble() {
         <SelectTeamModal
           heading={teamModal === 'dropoff' ? 'Drop-off and clock-in' : 'Clock-in Team member'}
           intro={teamModal === 'dropoff'
-            ? 'Pick who you are dropping off, and the job site below. They are clocked in at that site from now.'
+            ? 'Pick who you are dropping off, and the job site below (or add one that is not listed). They are clocked in at that site from now.'
             : 'Pick who is with you. They are clocked in from now, until you or another technician clocks them out.'}
           confirmLabel={n => (n > 0
             ? `${teamModal === 'dropoff' ? 'Drop off & clock in' : 'Clock in'} ${n} team member${n === 1 ? '' : 's'}`

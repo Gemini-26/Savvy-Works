@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Search, MapPin } from 'lucide-react'
+import { Search, MapPin, Plus } from 'lucide-react'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { fetchDropOffJobs } from '../services/teamShiftService'
 import { fetchMyAppointments } from '../../modules/technician/services/technicianService'
@@ -8,6 +8,12 @@ import { toDateStr, todayStr } from '../utils/formatDate'
 // "Where are you dropping them?" — the job site a team member is left at.
 // The technician's own jobs for today come first, then any other open job
 // (a labourer is often sent to a site the technician isn't booked on).
+//
+// "+ Add job site" is for a site that isn't on the system yet: they type a job
+// number or an address. onChange gets an existing job, or { id: null,
+// site_text } for typed text (null while nothing is picked/typed). If what
+// they typed is exactly an open job's number, that job is used, so the
+// clock-in is still linked to it.
 export default function DropOffJobPicker({ value, onChange }) {
   const { profile } = useCurrentUser()
   const [jobs, setJobs] = useState([])
@@ -15,6 +21,8 @@ export default function DropOffJobPicker({ value, onChange }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [query, setQuery] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [siteText, setSiteText] = useState('')
 
   useEffect(() => {
     let alive = true
@@ -43,6 +51,56 @@ export default function DropOffJobPicker({ value, onChange }) {
     // Stable sort: today's jobs float to the top, the rest keep newest-first.
     return [...matches].sort((a, b) => Number(todayIds.has(b.id)) - Number(todayIds.has(a.id))).slice(0, 40)
   }, [jobs, todayIds, query])
+
+  function typeSite(text) {
+    setSiteText(text)
+    const typed = text.trim()
+    if (!typed) return onChange(null)
+    const match = jobs.find(j => j.job_ref && j.job_ref.toLowerCase() === typed.toLowerCase())
+    onChange(match || { id: null, site_text: typed })
+  }
+
+  function startAdding() {
+    setAdding(true)
+    setSiteText('')
+    onChange(null)
+  }
+
+  function stopAdding() {
+    setAdding(false)
+    setSiteText('')
+    onChange(null)
+  }
+
+  if (adding) {
+    const linked = value?.id ? value : null
+    return (
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
+          <MapPin size={13} className="text-gray-400" /> New drop-off job site
+          <span className="text-red-500">*</span>
+        </p>
+        <input
+          autoFocus
+          value={siteText}
+          maxLength={120}
+          onChange={e => typeSite(e.target.value)}
+          placeholder="Job number or job site, e.g. JB-2026-30905 or 12 Main Rd"
+          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+        {linked && (
+          <p className="text-xs text-emerald-700">
+            That is job {linked.job_ref}
+            {[linked.site_address, linked.site_city].filter(Boolean).length > 0 && ` (${[linked.site_address, linked.site_city].filter(Boolean).join(', ')})`}
+            {' '}— it will be linked to it.
+          </p>
+        )}
+        <button type="button" onClick={stopAdding} className="text-xs font-semibold text-blue-600">
+          ← Pick from the list instead
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-1.5">
@@ -89,6 +147,10 @@ export default function DropOffJobPicker({ value, onChange }) {
           )
         })}
       </div>
+
+      <button type="button" onClick={startAdding} className="flex items-center gap-1.5 text-sm font-semibold text-blue-600 pt-0.5">
+        <Plus size={15} /> Add job site
+      </button>
     </div>
   )
 }

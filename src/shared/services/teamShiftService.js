@@ -90,16 +90,19 @@ function jobLabel(job) {
 // Clock several team members in at once. One failing (e.g. already clocked in
 // on another phone) doesn't stop the rest: resolves to { done, failed } where
 // failed is [{ teamMemberId, message }].
-//   mode 'drop_off' needs `job` ({ id, job_ref, site_address, site_city, title }).
+//   mode 'drop_off' needs `job`: either an existing job
+//   ({ id, job_ref, site_address, site_city, title }) or a site the technician
+//   typed in ({ id: null, site_text }).
 export async function clockInTeamMembers(teamMemberIds, { mode = 'with_technician', job = null } = {}) {
-  if (mode === 'drop_off' && !job?.id) throw new Error('Pick the job site you are dropping them at')
+  const typedSite = job?.id ? '' : (job?.site_text || '').trim().slice(0, 200)
+  if (mode === 'drop_off' && !job?.id && !typedSite) throw new Error('Pick or type the job site you are dropping them at')
 
   // Where the phone is right now — a soft record, never a reason to wait long.
   const fix = await getCurrentFix({ timeout: 6000 })
   const base = {
     mode,
-    job_id: mode === 'drop_off' ? job.id : null,
-    site_label: mode === 'drop_off' ? jobLabel(job) : null,
+    job_id: mode === 'drop_off' ? (job.id || null) : null,
+    site_label: mode === 'drop_off' ? (job.id ? jobLabel(job) : typedSite) : null,
     in_lat: fix?.lat ?? null,
     in_lng: fix?.lng ?? null,
   }
