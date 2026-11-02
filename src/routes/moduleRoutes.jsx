@@ -10,6 +10,7 @@ import NewJobPage from '../modules/jobs/pages/NewJobPage'
 import JobDetailPage from '../modules/jobs/pages/JobDetailPage'
 import UsersPage from '../modules/users/pages/UsersPage'
 import LiveUsersPage from '../modules/users/pages/LiveUsersPage'
+import LiveTeamMembersPage from '../modules/users/pages/LiveTeamMembersPage'
 import ActiveTeamMembersPage from '../modules/users/pages/ActiveTeamMembersPage'
 import TeamMemberLogPage from '../modules/users/pages/TeamMemberLogPage'
 import NewUserPage from '../modules/users/pages/NewUserPage'
@@ -171,6 +172,7 @@ export const moduleRoutes = [
   { path: 'users/logs/:id',      element: <UserActivityLogPage />,                 title: 'User Activity Log' },
   { path: 'users/:id',           element: <UserDetailPage />,                      title: 'User' },
   { path: 'users/:id/documents', element: <ProfileDocumentsPage />,                 title: 'User Documents' },
+  { path: 'users/team/live',     element: <LiveTeamMembersPage />,                      title: 'Live Team Members' },
   { path: 'users/team/active',   element: <ActiveTeamMembersPage activeOnly={true} />,  title: 'Active Team Members' },
   { path: 'users/team/inactive', element: <ActiveTeamMembersPage activeOnly={false} />,  title: 'Inactive Team Members' },
   { path: 'users/team/:id',      element: <TeamMemberLogPage />,                        title: 'Team Member Log' },

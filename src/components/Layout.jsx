@@ -196,6 +196,7 @@ const NAV = [
       {
         heading: 'Team Members',
         items: [
+          { label: 'Live Team Members',     path: '/users/team/live' },
           { label: 'Active Team Members',   path: '/users/team/active' },
           { label: 'Inactive Team Members', path: '/users/team/inactive' },
         ],

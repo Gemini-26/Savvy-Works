@@ -50,6 +50,55 @@ export async function fetchOpenTeamShifts() {
   return data || []
 }
 
+// The Live Team Members page: one row per team member who is clocked in right
+// now, oldest first, with who clocked them in and where. Its own select (more
+// columns than SHIFT_SELECT) so the lighter bubble/report queries stay as they are.
+const LIVE_SELECT = `
+  id, team_member_id, clock_in, mode, site_label, job_id, in_lat, in_lng, original_clock_in,
+  team_members(id, full_name, role_title, is_casual, phone),
+  jobs:job_id(id, job_ref, title, site_address, site_city, site_lat, site_lng),
+  clocked_in_by_profile:clocked_in_by(id, full_name, role, color)
+`
+
+export async function fetchLiveTeamMembers() {
+  const { data, error } = await supabase
+    .from('team_member_shifts')
+    .select(LIVE_SELECT)
+    .is('clock_out', null)
+    .order('clock_in', { ascending: true })
+  if (error) {
+    if (isMissingTable(error)) return []
+    throw error
+  }
+  return (data || []).map(r => {
+    const job = r.jobs
+    const by = r.clocked_in_by_profile
+    return {
+      shiftId: r.id,
+      teamMemberId: r.team_member_id,
+      fullName: r.team_members?.full_name ?? 'Unknown',
+      roleTitle: r.team_members?.role_title ?? null,
+      isCasual: !!r.team_members?.is_casual,
+      phone: r.team_members?.phone ?? null,
+      clockIn: r.clock_in,
+      adjusted: !!r.original_clock_in,
+      dropOff: r.mode === 'drop_off',
+      siteLabel: r.site_label,
+      job: job ? {
+        id: job.id,
+        ref: job.job_ref,
+        title: job.title,
+        location: [job.site_address, job.site_city].filter(Boolean).join(', ') || null,
+        point: job.site_lat != null && job.site_lng != null ? { lat: job.site_lat, lng: job.site_lng } : null,
+      } : null,
+      // Where the phone was when they were clocked in (a snapshot, not live).
+      lat: r.in_lat ?? null,
+      lng: r.in_lng ?? null,
+      clockedBy: by ? { id: by.id, name: by.full_name ?? 'Unknown', role: by.role ?? null, color: by.color ?? null } : null,
+    }
+  })
+}
+
 // Company-wide: most recent completed clock-ins for every team member, newest
 // first — the team half of the User Timesheets report.
 export async function fetchTeamShiftHistoryForCompany(limit = 100) {
