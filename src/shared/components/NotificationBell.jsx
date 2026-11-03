@@ -1,9 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Bell } from 'lucide-react'
+import { Bell, Check, Volume2, VolumeX } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from '../services/notificationService'
+import { enableAlerts, notificationPermission, showSystemNotification, syncPushSubscription } from '../services/pushService'
+import { installSoundUnlock, isSoundOn, playNotificationSound, setSoundOn, unlockSound } from '../utils/notificationSound'
 import { formatDateRelative, formatTime } from '../utils/formatDate'
+import NotificationToasts from './NotificationToasts'
+
+const POLL_MS = 30000
+const MAX_TOASTS = 4
+const PROMPT_KEY = 'savvy-alert-prompt-done'
+const PROMPT_ID = 'enable-alerts-prompt'
+
+function promptAlreadyAnswered() {
+  try { return localStorage.getItem(PROMPT_KEY) === '1' } catch { return true }
+}
+
+function rememberPromptAnswered() {
+  try { localStorage.setItem(PROMPT_KEY, '1') } catch { /* private mode */ }
+}
 
 export default function NotificationBell() {
   const { profile } = useCurrentUser()
@@ -11,15 +28,125 @@ export default function NotificationBell() {
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [unread, setUnread] = useState(0)
+  const [toasts, setToasts] = useState([])
+  const [soundOn, setSoundOnState] = useState(isSoundOn)
+  const [permission, setPermission] = useState(notificationPermission)
+  // Ids already announced, so a row that arrives live and then again on the
+  // next refresh only makes a noise once.
+  const seen = useRef(new Set())
+  // react-router hands back a new navigate() on every route change; the live
+  // subscription below must not be torn down and rebuilt each time, so the
+  // callbacks reach it through a ref.
+  const navigateRef = useRef(navigate)
+  useEffect(() => { navigateRef.current = navigate }, [navigate])
+
+  useEffect(() => installSoundUnlock(), [])
+
+  const dismissToast = useCallback(id => {
+    if (id === PROMPT_ID) rememberPromptAnswered()
+    setToasts(prev => prev.filter(t => t.id !== id))
+  }, [])
+
+  const openLink = useCallback(link => {
+    if (link && link.startsWith('/')) navigateRef.current(link)
+  }, [])
+
+  // New unread notifications: chime, an on-screen card, and — if this tab is
+  // in the background — a system pop-up in the notification bar.
+  const announce = useCallback(rows => {
+    const fresh = rows.filter(r => !seen.current.has(r.id))
+    fresh.forEach(r => seen.current.add(r.id))
+    const unreadFresh = fresh.filter(r => !r.is_read)
+    if (unreadFresh.length === 0) return
+
+    playNotificationSound()
+    const shown = unreadFresh.slice(0, 3)
+    setToasts(prev => [
+      ...shown.map(r => ({ id: r.id, kind: 'notification', title: r.title, body: r.body, link: r.link })),
+      ...prev,
+    ].slice(0, MAX_TOASTS))
+    if (document.hidden) {
+      shown.forEach(r => showSystemNotification(r, () => openLink(r.link)).catch(() => {}))
+    }
+  }, [openLink])
 
   useEffect(() => {
     if (!profile?.id) return
-    fetchUnreadCount(profile.id).then(setUnread).catch(() => {})
-    const interval = setInterval(() => {
-      fetchUnreadCount(profile.id).then(setUnread).catch(() => {})
-    }, 30000)
-    return () => clearInterval(interval)
+    let cancelled = false
+    let primed = false
+    seen.current = new Set()
+
+    async function refresh() {
+      try {
+        const [list, count] = await Promise.all([fetchMyNotifications(profile.id), fetchUnreadCount(profile.id)])
+        if (cancelled) return
+        setNotifications(list)
+        setUnread(count)
+        // The first load is history, not news.
+        if (!primed) { list.forEach(r => seen.current.add(r.id)); primed = true } else announce(list)
+      } catch { /* try again on the next poll */ }
+    }
+    refresh()
+
+    // Live: the moment a row is written for this person. The poll below is the
+    // safety net for a dropped connection.
+    const channel = supabase
+      .channel(`notifications-${profile.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${profile.id}` },
+        payload => { announce([payload.new]); refresh() },
+      )
+      .subscribe()
+
+    const interval = setInterval(refresh, POLL_MS)
+    function onVisible() { if (!document.hidden) refresh() }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisible)
+      supabase.removeChannel(channel)
+    }
+  }, [profile?.id, announce])
+
+  // Re-saves this browser's push address for whoever is signed in on it.
+  useEffect(() => {
+    if (profile?.id && notificationPermission() === 'granted') syncPushSubscription().catch(() => {})
   }, [profile?.id])
+
+  // Tapping a system pop-up while the app is already open comes back here.
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return
+    function onMessage(e) {
+      if (e.data?.type === 'open-link') openLink(e.data.link)
+    }
+    navigator.serviceWorker.addEventListener('message', onMessage)
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage)
+  }, [openLink])
+
+  async function turnOnAlerts() {
+    unlockSound()
+    setPermission(await enableAlerts())
+  }
+
+  // One gentle, one-time offer to turn pop-ups on (browsers only allow asking
+  // from a tap, so this is a button, not an automatic prompt).
+  useEffect(() => {
+    if (!profile?.id || notificationPermission() !== 'default' || promptAlreadyAnswered()) return
+    const timer = setTimeout(() => {
+      setToasts(prev => prev.some(t => t.id === PROMPT_ID) ? prev : [
+        {
+          id: PROMPT_ID,
+          kind: 'prompt',
+          onAccept: async () => { await turnOnAlerts(); dismissToast(PROMPT_ID) },
+        },
+        ...prev,
+      ])
+    }, 4000)
+    return () => clearTimeout(timer)
+  }, [profile?.id, dismissToast])
 
   async function toggleOpen(e) {
     e.stopPropagation()
@@ -31,14 +158,15 @@ export default function NotificationBell() {
     }
   }
 
-  async function handleClick(n) {
+  async function openNotification(n) {
+    dismissToast(n.id)
     if (!n.is_read) {
       await markNotificationRead(n.id).catch(() => {})
       setUnread(u => Math.max(0, u - 1))
       setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, is_read: true } : x))
     }
     setOpen(false)
-    if (n.link) navigate(n.link)
+    openLink(n.link)
   }
 
   async function handleMarkAllRead(e) {
@@ -47,6 +175,17 @@ export default function NotificationBell() {
     await markAllNotificationsRead(profile.id).catch(() => {})
     setUnread(0)
     setNotifications(prev => prev.map(x => ({ ...x, is_read: true })))
+  }
+
+  function toggleSound(e) {
+    e.stopPropagation()
+    const next = !soundOn
+    setSoundOn(next)
+    setSoundOnState(next)
+    if (next) {
+      unlockSound()
+      playNotificationSound({ force: true })
+    }
   }
 
   return (
@@ -63,6 +202,12 @@ export default function NotificationBell() {
           </span>
         )}
       </button>
+
+      <NotificationToasts
+        toasts={toasts}
+        onOpen={t => openNotification({ id: t.id, link: t.link, is_read: false })}
+        onDismiss={dismissToast}
+      />
 
       {open && (
         <div
@@ -84,7 +229,7 @@ export default function NotificationBell() {
               {notifications.map(n => (
                 <button
                   key={n.id}
-                  onClick={() => handleClick(n)}
+                  onClick={() => openNotification(n)}
                   className={`w-full text-left px-3 py-2.5 hover:bg-gray-50 transition-colors ${!n.is_read ? 'bg-blue-50/50' : ''}`}
                 >
                   <div className="flex items-start gap-2">
@@ -99,6 +244,24 @@ export default function NotificationBell() {
               ))}
             </div>
           )}
+
+          <div className="sticky bottom-0 flex items-center justify-between gap-2 px-3 py-2 bg-white border-t border-gray-100">
+            <button onClick={toggleSound} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900">
+              {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
+              Sound {soundOn ? 'on' : 'off'}
+            </button>
+            {permission === 'default' && (
+              <button onClick={turnOnAlerts} className="text-xs text-blue-600 font-medium hover:underline">
+                Turn on pop-up alerts
+              </button>
+            )}
+            {permission === 'granted' && (
+              <span className="flex items-center gap-1 text-xs text-green-600"><Check size={12} /> Pop-up alerts on</span>
+            )}
+            {permission === 'denied' && (
+              <span className="text-xs text-gray-400">Pop-ups blocked in browser settings</span>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -28,6 +28,8 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
+        // Handles pushed notifications (the notification-bar pop-ups).
+        importScripts: ['push-sw.js'],
         // The face library is a 1.3 MB chunk only people who clock in with
         // their face need; it's cached at runtime (below) instead of being
         // downloaded by every device that installs the app.

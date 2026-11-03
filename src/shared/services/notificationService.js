@@ -1,4 +1,13 @@
 import { supabase } from '../../lib/supabase'
+import { pushNotifications } from './pushService'
+
+// Saves the in-app copies, then asks the server to push them to any devices
+// that turned pop-up alerts on.
+async function insertAndPush(rows) {
+  const { data, error } = await supabase.from('notifications').insert(rows).select('id')
+  if (error) throw error
+  pushNotifications((data || []).map(r => r.id))
+}
 
 export async function notifyAdmins({ title, body, link }) {
   const { data: admins, error: adminErr } = await supabase
@@ -9,15 +18,12 @@ export async function notifyAdmins({ title, body, link }) {
   if (adminErr) throw adminErr
   if (!admins || admins.length === 0) return
 
-  const rows = admins.map(a => ({ user_id: a.id, title, body, link }))
-  const { error } = await supabase.from('notifications').insert(rows)
-  if (error) throw error
+  await insertAndPush(admins.map(a => ({ user_id: a.id, title, body, link })))
 }
 
 export async function notifyUser(userId, { title, body, link }) {
   if (!userId) return
-  const { error } = await supabase.from('notifications').insert([{ user_id: userId, title, body, link }])
-  if (error) throw error
+  await insertAndPush([{ user_id: userId, title, body, link }])
 }
 
 export async function fetchMyNotifications(profileId, limit = 30) {
