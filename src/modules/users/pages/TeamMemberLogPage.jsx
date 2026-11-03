@@ -99,7 +99,9 @@ export default function TeamMemberLogPage() {
                     {formatDate(c.clock_in)} · {formatTime(c.clock_in)} – {c.clock_out ? formatTime(c.clock_out) : <span className="text-emerald-600">still clocked in</span>}
                   </p>
                   <p className="text-xs text-gray-500 truncate">
-                    {c.mode === 'drop_off' ? `Dropped off${c.site_label ? ` at ${c.site_label}` : ''}` : 'With the technician'}
+                    {c.mode === 'drop_off'
+                      ? `Dropped off${c.site_label ? ` at ${c.site_label}` : ''}`
+                      : `With the technician${c.site_label ? ` · ${c.site_label}` : ''}`}
                     {c.clocked_in_by_profile?.full_name ? ` · In by ${c.clocked_in_by_profile.full_name}` : ''}
                     {c.clock_out && c.clocked_out_by_profile?.full_name ? ` · Out by ${c.clocked_out_by_profile.full_name}` : ''}
                   </p>

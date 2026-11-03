@@ -9,7 +9,7 @@ import { useFaceCheck } from '../hooks/useFaceCheck'
 import { fetchFaceEnrolment } from '../services/faceService'
 import { preloadFaceEngine } from '../utils/faceEngine'
 import SelectTeamModal from '../../modules/technician/components/SelectTeamModal'
-import DropOffJobPicker from './DropOffJobPicker'
+import JobSitePicker from './JobSitePicker'
 
 function formatElapsed(ms) {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
@@ -43,7 +43,7 @@ export default function ClockBubble() {
   // grey out already-clocked-in people in the picker.
   const [openTeamShifts, setOpenTeamShifts] = useState([])
   const [teamModal, setTeamModal] = useState(null)       // null | 'with' | 'dropoff'
-  const [dropJob, setDropJob] = useState(null)
+  const [teamJob, setTeamJob] = useState(null)         // the job number they are clocked in on
   const [teamBusy, setTeamBusy] = useState(false)
   const [teamError, setTeamError] = useState(null)
   const [teamNote, setTeamNote] = useState(null)         // { tone: 'green' | 'amber', text }
@@ -131,21 +131,23 @@ export default function ClockBubble() {
   function openTeamModal(kind) {
     setTeamError(null)
     setTeamNote(null)
-    setDropJob(null)
+    setTeamJob(null)
     setTeamModal(kind)
   }
 
   function closeTeamModal() {
     if (teamBusy) return
     setTeamModal(null)
-    setDropJob(null)
+    setTeamJob(null)
     setTeamError(null)
   }
 
   async function handleTeamClockIn(ids) {
     const dropOff = teamModal === 'dropoff'
-    if (dropOff && !dropJob) {
-      setTeamError('Pick or type the job site you are dropping them at.')
+    if (!teamJob) {
+      setTeamError(dropOff
+        ? 'Pick or type the job site you are dropping them at.'
+        : 'Pick or type the job number you are clocking them in on.')
       return
     }
     setTeamBusy(true)
@@ -153,16 +155,16 @@ export default function ClockBubble() {
     try {
       const { done, failed } = await clockInTeamMembers(ids, {
         mode: dropOff ? 'drop_off' : 'with_technician',
-        job: dropOff ? dropJob : null,
+        job: teamJob,
       })
       if (done.length > 0) {
-        const where = dropOff ? ` at ${dropJob.job_ref || dropJob.site_text || 'the job site'}` : ''
+        const where = ` ${dropOff ? 'at' : 'on'} ${teamJob.job_ref || teamJob.site_text || 'the job'}`
         const who = `${done.length} team member${done.length === 1 ? '' : 's'}`
         setTeamNote(failed.length > 0
           ? { tone: 'amber', text: `${who} clocked in${where}. ${failed.length} could not be: ${failed[0].message}.` }
           : { tone: 'green', text: `${who} clocked in${where}.` })
         setTeamModal(null)
-        setDropJob(null)
+        setTeamJob(null)
       } else {
         setTeamError(failed[0]?.message || 'Could not clock them in.')
       }
@@ -307,9 +309,9 @@ export default function ClockBubble() {
                       <p className="text-[10px] text-gray-500">
                         In {formatClockTime(t.clock_in)} · {formatSince(now - new Date(t.clock_in).getTime())}
                       </p>
-                      {t.mode === 'drop_off' && (
+                      {(t.mode === 'drop_off' || t.site_label) && (
                         <p className="text-[10px] text-gray-500 leading-tight break-words">
-                          Drop-off{t.site_label ? `: ${t.site_label}` : ''}
+                          {t.mode === 'drop_off' ? 'Drop-off' : 'Job'}{t.site_label ? `: ${t.site_label}` : ''}
                         </p>
                       )}
                     </div>
@@ -351,7 +353,7 @@ export default function ClockBubble() {
           heading={teamModal === 'dropoff' ? 'Drop-off and clock-in' : 'Clock-in Team member'}
           intro={teamModal === 'dropoff'
             ? 'Pick who you are dropping off, and the job site below (or add one that is not listed). They are clocked in at that site from now.'
-            : 'Pick who is with you. They are clocked in from now, until you or another technician clocks them out.'}
+            : 'Pick who is with you, and the job number they are working on below (or add one that is not listed). They are clocked in from now, until you or another technician clocks them out.'}
           confirmLabel={n => (n > 0
             ? `${teamModal === 'dropoff' ? 'Drop off & clock in' : 'Clock in'} ${n} team member${n === 1 ? '' : 's'}`
             : 'Pick a team member')}
@@ -360,11 +362,16 @@ export default function ClockBubble() {
           disabledIds={clockedInTeamIds}
           hiddenIds={hiddenTeamIds}
           requireSelection
-          confirmDisabled={teamModal === 'dropoff' && !dropJob}
+          confirmDisabled={!teamJob}
           onConfirm={handleTeamClockIn}
           onClose={closeTeamModal}
         >
-          {teamModal === 'dropoff' && <DropOffJobPicker value={dropJob} onChange={setDropJob} />}
+          <JobSitePicker
+            value={teamJob}
+            onChange={setTeamJob}
+            label={teamModal === 'dropoff' ? 'Drop-off job site' : 'Job number'}
+            addLabel={teamModal === 'dropoff' ? 'New drop-off job site' : 'New job number'}
+          />
           {teamError && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded">{teamError}</div>
           )}

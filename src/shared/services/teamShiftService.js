@@ -1,5 +1,6 @@
 import { supabase } from '../../lib/supabase'
 import { getCurrentFix } from '../utils/geo'
+import { jobSiteFields } from '../utils/jobSite'
 
 // A team member (labourer/helper) has no login, so a technician clocks them
 // in and out from their own phone. The database owns the times — see the
@@ -8,6 +9,8 @@ import { getCurrentFix } from '../utils/geo'
 //   with_technician  "Clock-in Team member": they're with the technician.
 //   drop_off         "Drop-off and clock-in Team member": the technician
 //                    leaves them at a job site and clocks them in there.
+//
+// Either way the technician says which job number they are clocked in on.
 
 const TEAMSHIFT_CHANGED = 'teamshift:changed'
 
@@ -130,28 +133,26 @@ export async function fetchTeamMemberShifts(teamMemberId, limit = 200) {
   return data || []
 }
 
-function jobLabel(job) {
-  if (!job) return null
-  const place = [job.site_address, job.site_city].filter(Boolean).join(', ')
-  return [job.job_ref, place || job.title].filter(Boolean).join(' · ') || null
-}
-
 // Clock several team members in at once. One failing (e.g. already clocked in
 // on another phone) doesn't stop the rest: resolves to { done, failed } where
 // failed is [{ teamMemberId, message }].
-//   mode 'drop_off' needs `job`: either an existing job
-//   ({ id, job_ref, site_address, site_city, title }) or a site the technician
-//   typed in ({ id: null, site_text }).
+//   Both modes need `job`, the job number they are clocked in on: either an
+//   existing job ({ id, job_ref, site_address, site_city, title }) or one the
+//   technician typed in ({ id: null, site_text }). For drop_off it is the site
+//   they are left at.
 export async function clockInTeamMembers(teamMemberIds, { mode = 'with_technician', job = null } = {}) {
-  const typedSite = job?.id ? '' : (job?.site_text || '').trim().slice(0, 200)
-  if (mode === 'drop_off' && !job?.id && !typedSite) throw new Error('Pick or type the job site you are dropping them at')
+  const site = jobSiteFields(job)
+  if (!site.job_id && !site.site_label) {
+    throw new Error(mode === 'drop_off'
+      ? 'Pick or type the job site you are dropping them at'
+      : 'Pick or type the job number you are clocking them in on')
+  }
 
   // Where the phone is right now — a soft record, never a reason to wait long.
   const fix = await getCurrentFix({ timeout: 6000 })
   const base = {
     mode,
-    job_id: mode === 'drop_off' ? (job.id || null) : null,
-    site_label: mode === 'drop_off' ? (job.id ? jobLabel(job) : typedSite) : null,
+    ...site,
     in_lat: fix?.lat ?? null,
     in_lng: fix?.lng ?? null,
   }

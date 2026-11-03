@@ -5,16 +5,17 @@ import { fetchDropOffJobs } from '../services/teamShiftService'
 import { fetchMyAppointments } from '../../modules/technician/services/technicianService'
 import { toDateStr, todayStr } from '../utils/formatDate'
 
-// "Where are you dropping them?" — the job site a team member is left at.
+// "Which job?" — the job number a team member is clocked in on (with the
+// technician, or dropped off at a site).
 // The technician's own jobs for today come first, then any other open job
 // (a labourer is often sent to a site the technician isn't booked on).
 //
-// "+ Add job site" is for a site that isn't on the system yet: they type a job
+// "+ Add job site" is for a job that isn't on the system yet: they type a job
 // number or an address. onChange gets an existing job, or { id: null,
 // site_text } for typed text (null while nothing is picked/typed). If what
 // they typed is exactly an open job's number, that job is used, so the
 // clock-in is still linked to it.
-export default function DropOffJobPicker({ value, onChange }) {
+export default function JobSitePicker({ value, onChange, label = 'Job number', addLabel = 'New job number' }) {
   const { profile } = useCurrentUser()
   const [jobs, setJobs] = useState([])
   const [todayIds, setTodayIds] = useState(() => new Set())
@@ -77,7 +78,7 @@ export default function DropOffJobPicker({ value, onChange }) {
     return (
       <div className="space-y-1.5">
         <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
-          <MapPin size={13} className="text-gray-400" /> New drop-off job site
+          <MapPin size={13} className="text-gray-400" /> {addLabel}
           <span className="text-red-500">*</span>
         </p>
         <input
@@ -105,7 +106,7 @@ export default function DropOffJobPicker({ value, onChange }) {
   return (
     <div className="space-y-1.5">
       <p className="text-xs font-semibold text-gray-700 flex items-center gap-1.5">
-        <MapPin size={13} className="text-gray-400" /> Drop-off job site
+        <MapPin size={13} className="text-gray-400" /> {label}
         <span className="text-red-500">*</span>
       </p>
 

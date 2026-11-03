@@ -14,7 +14,8 @@ const clockTime = iso => new Date(iso).toLocaleTimeString('en-ZA', { hour: '2-di
 // Team members have no login: a technician clocks them in and out, either
 // with them or by dropping them at a job site.
 function teamPlace(t) {
-  return t.mode === 'drop_off' ? `Dropped off${t.site_label ? ` at ${t.site_label}` : ''}` : 'With the technician'
+  if (t.mode === 'drop_off') return `Dropped off${t.site_label ? ` at ${t.site_label}` : ''}`
+  return `With the technician${t.site_label ? ` · ${t.site_label}` : ''}`
 }
 
 function TeamBadge() {

@@ -25,6 +25,31 @@ function Avatar({ name }) {
   )
 }
 
+// Where they are and on which job number: linked when it is a job on the
+// system, plain text when the technician typed one in.
+function MemberWhere({ m }) {
+  const job = m.job ? (
+    <>
+      <Link to={`/jobs/${m.job.id}`} className="text-gray-900 font-medium hover:text-blue-600">
+        {m.job.title ?? m.job.ref}
+      </Link>
+      {m.job.location && <span className="text-gray-500"> — {m.job.location}</span>}
+    </>
+  ) : m.siteLabel ? (
+    <span className="text-gray-900 font-medium">{m.siteLabel}</span>
+  ) : null
+
+  if (m.dropOff) {
+    return <span>Dropped off at {job ?? <span className="text-gray-900 font-medium">a job site</span>}</span>
+  }
+  return (
+    <span className="text-gray-500">
+      With {m.clockedBy?.name ?? 'the technician who clocked them in'}
+      {job && <> on {job}</>}
+    </span>
+  )
+}
+
 function LiveDuration({ since }) {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -235,21 +260,7 @@ export default function LiveTeamMembersPage() {
 
                 <div className="flex items-start gap-2 text-gray-600">
                   <MapPin size={14} className="text-gray-400 flex-shrink-0 mt-0.5" />
-                  {m.dropOff ? (
-                    m.job ? (
-                      <span>
-                        Dropped off at{' '}
-                        <Link to={`/jobs/${m.job.id}`} className="text-gray-900 font-medium hover:text-blue-600">
-                          {m.job.title ?? m.job.ref}
-                        </Link>
-                        {m.job.location && <span className="text-gray-500"> — {m.job.location}</span>}
-                      </span>
-                    ) : (
-                      <span>Dropped off at <span className="text-gray-900 font-medium">{m.siteLabel || 'a job site'}</span></span>
-                    )
-                  ) : (
-                    <span className="text-gray-500">With {m.clockedBy?.name ?? 'the technician who clocked them in'}</span>
-                  )}
+                  <MemberWhere m={m} />
                 </div>
 
                 <div className="flex items-start gap-2 text-gray-600">

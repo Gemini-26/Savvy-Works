@@ -59,7 +59,9 @@ export default function LiveTeamMembersMap({ members }) {
                 <strong>{m.fullName}</strong><br />
                 Clocked in {new Date(m.clockIn).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })}
                 {m.clockedBy && <> by {m.clockedBy.name}</>}<br />
-                {m.dropOff ? `Dropped off${m.siteLabel ? ` at ${m.siteLabel}` : ''}` : 'With the technician'}
+                {m.dropOff
+                  ? `Dropped off${m.siteLabel ? ` at ${m.siteLabel}` : ''}`
+                  : `With the technician${m.siteLabel ? ` · ${m.siteLabel}` : ''}`}
               </Popup>
             </Marker>
           ))}
