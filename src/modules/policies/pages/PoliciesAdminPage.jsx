@@ -7,11 +7,12 @@ import EmptyState from '../../../shared/components/EmptyState'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 import ProgressBar from '../components/ProgressBar'
 import AddPoliciesDialog from '../components/AddPoliciesDialog'
+import SignedCopiesPanel from '../components/SignedCopiesPanel'
 import { fetchPolicyOverviewData, remindPeople, POLICIES_CHANGED } from '../services/policyService'
 import { buildOverview, percent, AUDIENCE_LABELS } from '../policyStats'
 import { formatDate } from '../../../shared/utils/formatDate'
 
-const TABS = ['Documents', 'By person']
+const TABS = ['Documents', 'By person', 'Signed copies']
 
 function Stat({ label, value, sub }) {
   return (
@@ -119,7 +120,7 @@ export default function PoliciesAdminPage() {
               {TABS.map(t => (
                 <button key={t} type="button" onClick={() => setTab(t)}
                   className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${t === tab ? 'border-blue-600 text-white bg-blue-600' : 'border-transparent text-gray-600 hover:text-blue-600 hover:border-blue-300'}`}>
-                  {t}
+                  {t === 'Signed copies' ? `${t} (${data.signatures.length})` : t}
                 </button>
               ))}
             </div>
@@ -209,6 +210,8 @@ export default function PoliciesAdminPage() {
               </div>
             </div>
           )}
+
+          {tab === 'Signed copies' && <SignedCopiesPanel data={data} />}
         </>
       )}
 

@@ -1,9 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Bell, CheckCircle2, X } from 'lucide-react'
+import { ArrowLeft, Bell, CheckCircle2, Download, Eye, X } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
+import { useSignedPdfs } from '../hooks/useSignedPdfs'
+import PdfStatus from '../components/PdfStatus'
 import ProgressBar from '../components/ProgressBar'
 import PolicyContent from '../components/PolicyContent'
 import PublishPolicyDialog from '../components/PublishPolicyDialog'
@@ -98,7 +100,9 @@ function EditDetails({ doc, signedCount, onClose, onSaved }) {
   )
 }
 
-function SignatureModal({ signatureId, onClose }) {
+const pdfBtn = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 text-gray-700 bg-white hover:border-blue-300 hover:text-blue-700 disabled:opacity-50'
+
+function SignatureModal({ signatureId, pdfs, onClose }) {
   const [sig, setSig] = useState(null)
   const [error, setError] = useState(null)
 
@@ -129,6 +133,15 @@ function SignatureModal({ signatureId, onClose }) {
             <dt className="text-gray-500">Fingerprint</dt><dd className="text-[11px] text-gray-600 break-all">{sig.content_hash}</dd>
           </dl>
           <p className="text-[11px] text-gray-400">The fingerprint identifies the exact wording that was signed; it changes if a single character does.</p>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button type="button" disabled={pdfs.busyId === signatureId} onClick={() => pdfs.view(signatureId)} className={pdfBtn}>
+              <Eye size={13} /> {pdfs.busyId === signatureId ? 'Preparing…' : 'View signed PDF'}
+            </button>
+            <button type="button" disabled={pdfs.busyId === signatureId} onClick={() => pdfs.download(signatureId)} className={pdfBtn}>
+              <Download size={13} /> Download PDF
+            </button>
+          </div>
+          {pdfs.error && <p className="text-xs text-red-600">{pdfs.error}</p>}
         </div>
       )}
     </Modal>
@@ -145,6 +158,7 @@ export default function PolicyAdminDetailPage() {
   const [notice, setNotice] = useState(null)
   const [busy, setBusy] = useState(false)
   const [dialog, setDialog] = useState(null)   // 'preview' | 'edit' | 'version' | 'archive' | 'delete' | { signatureId }
+  const pdfs = useSignedPdfs()
 
   const load = useCallback(() => {
     Promise.all([fetchPolicy(id), fetchPolicyOverviewData()])
@@ -221,6 +235,7 @@ export default function PolicyAdminDetailPage() {
           <button type="button" onClick={() => setNotice(null)} className="text-green-700 shrink-0" aria-label="Dismiss">✕</button>
         </div>
       )}
+      <PdfStatus pdfs={pdfs} />
 
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={() => setDialog('preview')} className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 text-gray-700 bg-white">Read the document</button>
@@ -279,16 +294,36 @@ export default function PolicyAdminDetailPage() {
         </section>
 
         <section className="bg-white rounded-xl border border-gray-200">
-          <h2 className="px-4 py-3 text-sm font-bold text-green-700 border-b border-gray-100">Signed ({signed.length})</h2>
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-bold text-green-700">Signed ({signed.length})</h2>
+            {signed.length > 0 && (
+              <button type="button" disabled={!!pdfs.job}
+                onClick={() => pdfs.downloadZip(
+                  signed.map(({ signature }) => ({ signatureId: signature.id, documentId: doc.id })),
+                  { grouping: 'by-document', fileName: `${doc.title} (v${doc.version}) - signed copies.zip` },
+                )}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 disabled:opacity-50">
+                <Download size={13} /> Download all ({signed.length})
+              </button>
+            )}
+          </div>
           {signed.length === 0 ? <p className="p-4 text-sm text-gray-500">No one yet.</p> : (
             <ul className="divide-y divide-gray-100">
               {signed.map(({ person, signature }) => (
-                <li key={person.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
+                <li key={person.id} className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-900">{person.full_name}</p>
                     <p className="text-xs text-gray-500">{formatDateTime(signature.signed_at)}</p>
                   </div>
-                  <button type="button" onClick={() => setDialog({ signatureId: signature.id })} className="text-xs font-semibold text-blue-600 shrink-0">View signature</button>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    <button type="button" disabled={pdfs.busyId === signature.id || !!pdfs.job} onClick={() => pdfs.view(signature.id)} className={pdfBtn}>
+                      <Eye size={13} /> {pdfs.busyId === signature.id ? 'Preparing…' : 'View PDF'}
+                    </button>
+                    <button type="button" disabled={pdfs.busyId === signature.id || !!pdfs.job} onClick={() => pdfs.download(signature.id)} className={pdfBtn}>
+                      <Download size={13} /> Download
+                    </button>
+                    <button type="button" onClick={() => setDialog({ signatureId: signature.id })} className="text-xs font-semibold text-blue-600">Details</button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -337,7 +372,7 @@ export default function PolicyAdminDetailPage() {
           onCancel={() => setDialog(null)}
           onConfirm={() => run(async () => { await deletePolicy(doc.id); navigate('/files/policies') })} />
       )}
-      {dialog?.signatureId && <SignatureModal signatureId={dialog.signatureId} onClose={() => setDialog(null)} />}
+      {dialog?.signatureId && <SignatureModal signatureId={dialog.signatureId} pdfs={pdfs} onClose={() => setDialog(null)} />}
     </PageContainer>
   )
 }

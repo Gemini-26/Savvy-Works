@@ -161,6 +161,38 @@ export function startingAnswers(fields) {
 export const isTyped = f => f.kind !== 'signature'
 export const isRequired = f => isTyped(f) && !/\(optional\)/i.test(f.label)
 
+// A signed copy for printing / PDF: the document with each chosen blank replaced
+// by what the person typed (`<span data-pdf-answer="n">`) or, for a signature
+// line, a marker where their drawn signature goes (`<span data-pdf-signature>`).
+// A line left empty (an optional one) stays as the original underscores.
+// Returns the parsed <body>; nothing here is ever put on a page, so it needs no
+// sanitising beyond what the HTML already went through. Uses the same numbering
+// as everything above, which is the whole point of keeping it in this file.
+export function fillBlanksForPrint(html, fields, values = {}) {
+  const doc = parse(html)
+  const byN = new Map(fields.map(f => [f.n, f]))
+  const hits = scan(doc).map((hit, i) => ({ ...hit, n: i + 1 }))
+
+  for (const hit of hits.reverse()) {
+    const field = byN.get(hit.n)
+    if (!field) continue
+
+    const el = doc.createElement('span')
+    if (field.kind === 'signature') {
+      el.setAttribute('data-pdf-signature', '')
+    } else {
+      const value = String(values?.[hit.n] ?? '').trim()
+      if (!value) continue
+      el.setAttribute('data-pdf-answer', String(hit.n))
+      el.textContent = value
+    }
+    const rest = hit.node.splitText(hit.index)
+    rest.splitText(hit.length)
+    rest.replaceWith(el)
+  }
+  return doc.body
+}
+
 // The document HTML with a box in place of each chosen blank. `values` is
 // { n: text }; `readOnly` shows the answers as fixed text (a signed copy).
 export function renderWithBlanks(html, fields, { values = null, readOnly = false } = {}) {
