@@ -10,6 +10,7 @@ import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import BackgroundAccessCard from '../../../shared/components/BackgroundAccessCard'
 import ThemePicker from '../../../shared/components/ThemePicker'
+import { forgetThisDevice } from '../../../shared/services/pushService'
 import PolicyCard from '../../policies/components/PolicyCard'
 import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 import { describeOnSiteCrew } from '../../../shared/utils/shiftSummary'
@@ -55,6 +56,7 @@ export default function ProfilePage({ profile }) {
   }, [profile.id])
 
   async function handleLogout() {
+    await forgetThisDevice()
     await supabase.auth.signOut()
   }
 

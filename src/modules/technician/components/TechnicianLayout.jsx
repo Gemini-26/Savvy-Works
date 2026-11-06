@@ -2,6 +2,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { Briefcase, CalendarDays, User, LogOut, Wrench } from 'lucide-react'
 import { supabase } from '../../../lib/supabase'
 import NotificationBell from '../../../shared/components/NotificationBell'
+import { forgetThisDevice } from '../../../shared/services/pushService'
 import ClockBubble from '../../../shared/components/ClockBubble'
 import PolicyReminder from '../../policies/components/PolicyReminder'
 
@@ -14,6 +15,7 @@ const tabs = [
 
 export default function TechnicianLayout({ profile }) {
   async function handleLogout() {
+    await forgetThisDevice()
     await supabase.auth.signOut()
   }
 

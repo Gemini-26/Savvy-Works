@@ -1,4 +1,5 @@
 import { supabase } from '../../lib/supabase'
+import { forgetNativeToken } from './nativePushService'
 
 // Public half of the Web Push key pair (the private half lives only in the
 // send-push function's secrets). Without it, pop-ups still work while the app
@@ -121,6 +122,22 @@ export async function showSystemNotification({ id, title, body, link }, onClick)
   if (reg) { await reg.showNotification(title, options); return }
   const shown = new Notification(title, options)
   shown.onclick = () => { window.focus(); shown.close(); onClick?.() }
+}
+
+// On sign-out: stop this browser/phone buzzing for the person who just left.
+// Must run before the session ends (the rows are only deletable by their owner),
+// and is capped so a slow connection can never hold up signing out.
+export async function forgetThisDevice() {
+  const forget = async () => {
+    await forgetNativeToken()
+    if (!('serviceWorker' in navigator)) return
+    const reg = await navigator.serviceWorker.getRegistration()
+    const sub = await reg?.pushManager?.getSubscription()
+    if (sub) await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
+  }
+  try {
+    await Promise.race([forget(), new Promise(resolve => setTimeout(resolve, 3000))])
+  } catch { /* signing out matters more */ }
 }
 
 // Lets the server push this batch of notifications to people's devices.

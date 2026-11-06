@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from '../services/notificationService'
 import { enableAlerts, notificationPermission, setUpPush, showSystemNotification } from '../services/pushService'
+import { enableNativeAlerts, nativePushPermission, nativePushReady, setUpNativePush } from '../services/nativePushService'
 import { installSoundUnlock, isSoundOn, playNotificationSound, setSoundOn, unlockSound } from '../utils/notificationSound'
 import { formatDateRelative, formatTime } from '../utils/formatDate'
 import NotificationToasts from './NotificationToasts'
@@ -33,6 +34,9 @@ export default function NotificationBell() {
   const [permission, setPermission] = useState(notificationPermission)
   // Why alerts for a closed app aren't set up on this device ('' when they are).
   const [pushProblem, setPushProblem] = useState('')
+  // The Android app sets alerts up through Firebase rather than the browser's
+  // Notification API (which its web view doesn't have).
+  const [nativeApp] = useState(nativePushReady)
   // Ids already announced, so a row that arrives live and then again on the
   // next refresh only makes a noise once.
   const seen = useRef(new Set())
@@ -118,6 +122,18 @@ export default function NotificationBell() {
     if (profile?.id && notificationPermission() === 'granted') setUpPush().then(setPushProblem)
   }, [profile?.id])
 
+  // Android app: learn whether alerts are allowed, and if so (re)register this
+  // phone — Firebase can change its address, so this runs on every launch.
+  useEffect(() => {
+    if (!profile?.id || !nativeApp) return
+    nativePushPermission()
+      .then(result => {
+        setPermission(result)
+        if (result === 'granted') return setUpNativePush(openLink).then(setPushProblem)
+      })
+      .catch(() => {})
+  }, [profile?.id, nativeApp, openLink])
+
   // Tapping a system pop-up while the app is already open comes back here.
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
@@ -130,7 +146,7 @@ export default function NotificationBell() {
 
   async function turnOnAlerts() {
     unlockSound()
-    const { permission: result, problem } = await enableAlerts()
+    const { permission: result, problem } = nativeApp ? await enableNativeAlerts(openLink) : await enableAlerts()
     setPermission(result)
     setPushProblem(problem)
     // The offer card closes itself once answered, so a failure needs its own card.
@@ -141,13 +157,13 @@ export default function NotificationBell() {
 
   async function retryPush(e) {
     e.stopPropagation()
-    setPushProblem(await setUpPush())
+    setPushProblem(await (nativeApp ? setUpNativePush(openLink) : setUpPush()))
   }
 
   // One gentle, one-time offer to turn pop-ups on (browsers only allow asking
   // from a tap, so this is a button, not an automatic prompt).
   useEffect(() => {
-    if (!profile?.id || notificationPermission() !== 'default' || promptAlreadyAnswered()) return
+    if (!profile?.id || permission !== 'default' || promptAlreadyAnswered()) return
     const timer = setTimeout(() => {
       setToasts(prev => prev.some(t => t.id === PROMPT_ID) ? prev : [
         {
@@ -159,7 +175,7 @@ export default function NotificationBell() {
       ])
     }, 4000)
     return () => clearTimeout(timer)
-  }, [profile?.id, dismissToast])
+  }, [profile?.id, permission, dismissToast])
 
   async function toggleOpen(e) {
     e.stopPropagation()
@@ -276,7 +292,9 @@ export default function NotificationBell() {
                 <span className="text-xs text-amber-600 font-medium">Closed-app alerts off</span>
               )}
               {permission === 'denied' && (
-                <span className="text-xs text-gray-400">Pop-ups blocked in browser settings</span>
+                <span className="text-xs text-gray-400">
+                  {nativeApp ? 'Alerts blocked in the phone’s app settings' : 'Pop-ups blocked in browser settings'}
+                </span>
               )}
             </div>
             {permission === 'granted' && pushProblem && (

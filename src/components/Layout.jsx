@@ -9,6 +9,7 @@ import {
   Handshake, User, LayoutDashboard, Palette, PenLine
 } from 'lucide-react'
 import NotificationBell from '../shared/components/NotificationBell'
+import { forgetThisDevice } from '../shared/services/pushService'
 import ThemePicker from '../shared/components/ThemePicker'
 import ClockBubble from '../shared/components/ClockBubble'
 import PolicyReminder from '../modules/policies/components/PolicyReminder'
@@ -419,6 +420,7 @@ export default function Layout() {
   }
 
   async function handleLogout() {
+    await forgetThisDevice()
     await supabase.auth.signOut()
     navigate('/login')
   }
