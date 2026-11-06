@@ -3,12 +3,14 @@ import { createPortal } from 'react-dom'
 import { Bell, X } from 'lucide-react'
 
 const AUTO_DISMISS_MS = 9000
+// A "couldn't set that up" notice carries instructions, so it stays longer.
+const NOTICE_DISMISS_MS = 20000
 
 function Toast({ toast, onOpen, onDismiss }) {
   // The turn-on prompt waits for an answer; a notification fades away on its own.
   useEffect(() => {
     if (toast.kind === 'prompt') return
-    const timer = setTimeout(() => onDismiss(toast.id), AUTO_DISMISS_MS)
+    const timer = setTimeout(() => onDismiss(toast.id), toast.kind === 'notice' ? NOTICE_DISMISS_MS : AUTO_DISMISS_MS)
     return () => clearTimeout(timer)
   }, [toast.id, toast.kind, onDismiss])
 
@@ -39,6 +41,11 @@ function Toast({ toast, onOpen, onDismiss }) {
                 Not now
               </button>
             </div>
+          </>
+        ) : toast.kind === 'notice' ? (
+          <>
+            <p className="text-sm font-semibold text-gray-900">{toast.title}</p>
+            <p className="text-xs text-gray-600 mt-0.5">{toast.body}</p>
           </>
         ) : (
           <button onClick={() => onOpen(toast)} className="block w-full text-left">

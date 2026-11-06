@@ -45,7 +45,7 @@ async function readyRegistration() {
 export async function syncPushSubscription() {
   if (!pushSupported() || Notification.permission !== 'granted') return false
   const reg = await readyRegistration()
-  if (!reg) return false
+  if (!reg) throw Object.assign(new Error('The background worker is not ready'), { name: 'WorkerNotReady' })
 
   let sub = await reg.pushManager.getSubscription()
   if (!sub) {
@@ -65,13 +65,43 @@ export async function syncPushSubscription() {
   return true
 }
 
+// Brave ships with Google's push service switched off, which makes subscribing
+// fail with a bare "push service error" — say what to flip rather than leave
+// staff wondering why a closed app stays silent.
+async function explainPushFailure(err) {
+  const isBrave = !!(navigator.brave && await navigator.brave.isBrave().catch(() => false))
+  if (err?.name === 'AbortError' || /push service/i.test(err?.message || '')) {
+    return isBrave
+      ? 'Brave blocks alerts for a closed app by default. Open brave://settings/privacy, turn on "Use Google services for push messaging", restart Brave, then try again.'
+      : 'This browser could not reach its push service, so alerts for a closed app cannot be set up. Check the internet connection or firewall, then try again.'
+  }
+  if (err?.name === 'WorkerNotReady') {
+    return 'The app is still setting itself up in the background. Reload the page and try again.'
+  }
+  if (err?.name === 'NotAllowedError') {
+    return 'Notifications are blocked for this site. Allow them from the padlock beside the address bar, then try again.'
+  }
+  return `Could not finish setting up alerts for a closed app${err?.message ? ` (${err.message})` : ''}.`
+}
+
+// Signs this device up for closed-app alerts. Resolves to '' when it is set up,
+// otherwise to a sentence saying what went wrong.
+export async function setUpPush() {
+  try {
+    await syncPushSubscription()
+    return ''
+  } catch (err) {
+    return explainPushFailure(err)
+  }
+}
+
 // Asks the browser for permission (must come from a tap) and, when push is
-// configured, signs this device up for it. Resolves to the permission result.
+// configured, signs this device up for it. Resolves to { permission, problem }.
 export async function enableAlerts() {
-  if (!canShowSystemNotifications()) return 'unsupported'
+  if (!canShowSystemNotifications()) return { permission: 'unsupported', problem: '' }
   const permission = await Notification.requestPermission()
-  if (permission === 'granted') await syncPushSubscription().catch(() => {})
-  return permission
+  const problem = permission === 'granted' ? await setUpPush() : ''
+  return { permission, problem }
 }
 
 // A pop-up from the open page, for when its tab is in the background. The

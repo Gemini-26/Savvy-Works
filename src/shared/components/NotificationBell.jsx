@@ -4,7 +4,7 @@ import { Bell, Check, Volume2, VolumeX } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from '../services/notificationService'
-import { enableAlerts, notificationPermission, showSystemNotification, syncPushSubscription } from '../services/pushService'
+import { enableAlerts, notificationPermission, setUpPush, showSystemNotification } from '../services/pushService'
 import { installSoundUnlock, isSoundOn, playNotificationSound, setSoundOn, unlockSound } from '../utils/notificationSound'
 import { formatDateRelative, formatTime } from '../utils/formatDate'
 import NotificationToasts from './NotificationToasts'
@@ -31,6 +31,8 @@ export default function NotificationBell() {
   const [toasts, setToasts] = useState([])
   const [soundOn, setSoundOnState] = useState(isSoundOn)
   const [permission, setPermission] = useState(notificationPermission)
+  // Why alerts for a closed app aren't set up on this device ('' when they are).
+  const [pushProblem, setPushProblem] = useState('')
   // Ids already announced, so a row that arrives live and then again on the
   // next refresh only makes a noise once.
   const seen = useRef(new Set())
@@ -113,7 +115,7 @@ export default function NotificationBell() {
 
   // Re-saves this browser's push address for whoever is signed in on it.
   useEffect(() => {
-    if (profile?.id && notificationPermission() === 'granted') syncPushSubscription().catch(() => {})
+    if (profile?.id && notificationPermission() === 'granted') setUpPush().then(setPushProblem)
   }, [profile?.id])
 
   // Tapping a system pop-up while the app is already open comes back here.
@@ -128,7 +130,18 @@ export default function NotificationBell() {
 
   async function turnOnAlerts() {
     unlockSound()
-    setPermission(await enableAlerts())
+    const { permission: result, problem } = await enableAlerts()
+    setPermission(result)
+    setPushProblem(problem)
+    // The offer card closes itself once answered, so a failure needs its own card.
+    if (problem) {
+      setToasts(prev => [{ id: 'alerts-problem', kind: 'notice', title: 'Closed-app alerts are not set up', body: problem }, ...prev.filter(t => t.id !== 'alerts-problem')].slice(0, MAX_TOASTS))
+    }
+  }
+
+  async function retryPush(e) {
+    e.stopPropagation()
+    setPushProblem(await setUpPush())
   }
 
   // One gentle, one-time offer to turn pop-ups on (browsers only allow asking
@@ -245,21 +258,32 @@ export default function NotificationBell() {
             </div>
           )}
 
-          <div className="sticky bottom-0 flex items-center justify-between gap-2 px-3 py-2 bg-white border-t border-gray-100">
-            <button onClick={toggleSound} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900">
-              {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
-              Sound {soundOn ? 'on' : 'off'}
-            </button>
-            {permission === 'default' && (
-              <button onClick={turnOnAlerts} className="text-xs text-blue-600 font-medium hover:underline">
-                Turn on pop-up alerts
+          <div className="sticky bottom-0 bg-white border-t border-gray-100">
+            <div className="flex items-center justify-between gap-2 px-3 py-2">
+              <button onClick={toggleSound} className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-900">
+                {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
+                Sound {soundOn ? 'on' : 'off'}
               </button>
-            )}
-            {permission === 'granted' && (
-              <span className="flex items-center gap-1 text-xs text-green-600"><Check size={12} /> Pop-up alerts on</span>
-            )}
-            {permission === 'denied' && (
-              <span className="text-xs text-gray-400">Pop-ups blocked in browser settings</span>
+              {permission === 'default' && (
+                <button onClick={turnOnAlerts} className="text-xs text-blue-600 font-medium hover:underline">
+                  Turn on pop-up alerts
+                </button>
+              )}
+              {permission === 'granted' && !pushProblem && (
+                <span className="flex items-center gap-1 text-xs text-green-600"><Check size={12} /> Pop-up alerts on</span>
+              )}
+              {permission === 'granted' && pushProblem && (
+                <span className="text-xs text-amber-600 font-medium">Closed-app alerts off</span>
+              )}
+              {permission === 'denied' && (
+                <span className="text-xs text-gray-400">Pop-ups blocked in browser settings</span>
+              )}
+            </div>
+            {permission === 'granted' && pushProblem && (
+              <div className="px-3 pb-2">
+                <p className="text-[11px] text-gray-600">{pushProblem}</p>
+                <button onClick={retryPush} className="mt-1 text-xs text-blue-600 font-medium hover:underline">Try again</button>
+              </div>
             )}
           </div>
         </div>
