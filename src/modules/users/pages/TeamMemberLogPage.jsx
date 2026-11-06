@@ -5,7 +5,10 @@ import PageContainer from '../../../shared/components/PageContainer.jsx'
 import OnSiteHoursSummary from '../../../shared/components/OnSiteHoursSummary'
 import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import { fetchTeamMember, fetchTeamMemberOnSiteSessions } from '../services/teamMembersService'
-import { fetchTeamMemberShifts } from '../../../shared/services/teamShiftService'
+import ClockTimesModal from '../../../shared/components/ClockTimesModal'
+import TeamShiftAdjustedNote from '../../../shared/components/TeamShiftAdjustedNote'
+import { fetchTeamMemberShifts, adjustTeamShiftTimes, onTeamShiftChange } from '../../../shared/services/teamShiftService'
+import { teamPlace } from '../../../shared/utils/teamShiftText'
 import { formatDate, formatTime } from '../../../shared/utils/formatDate'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 
@@ -29,6 +32,7 @@ export default function TeamMemberLogPage() {
   const [clockIns, setClockIns] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [editing, setEditing] = useState(null)
 
   useEffect(() => {
     Promise.all([fetchTeamMember(id), fetchTeamMemberOnSiteSessions(id), fetchTeamMemberShifts(id)])
@@ -40,6 +44,12 @@ export default function TeamMemberLogPage() {
       .catch(err => setError(err.message || 'Failed to load team member log'))
       .finally(() => setLoading(false))
   }, [id])
+
+  // An admin corrected a time (or someone clocked this person in/out): refetch
+  // just the clock-ins.
+  useEffect(() => onTeamShiftChange(() => {
+    fetchTeamMemberShifts(id).then(setClockIns).catch(() => {})
+  }), [id])
 
   if (loading) return <PageContainer><p className="text-sm text-gray-400 mt-8">Loading…</p></PageContainer>
   if (error)   return <PageContainer><p className="text-sm text-red-500 mt-8">{error}</p></PageContainer>
@@ -56,8 +66,8 @@ export default function TeamMemberLogPage() {
           <div>
             <h1 className="text-xl font-bold text-gray-900">{member.full_name}</h1>
             <p className="text-sm text-gray-500">
-              {member.role_title || 'Team member'} · On-Site Log
-              {!member.is_active && <span className="text-gray-400"> · Inactive</span>}
+              {member.is_casual ? 'Casual' : (member.role_title || 'Team member')} · On-Site Log
+              {!member.is_active && !member.is_casual && <span className="text-gray-400"> · Inactive</span>}
             </p>
           </div>
         </div>
@@ -99,14 +109,20 @@ export default function TeamMemberLogPage() {
                     {formatDate(c.clock_in)} · {formatTime(c.clock_in)} – {c.clock_out ? formatTime(c.clock_out) : <span className="text-emerald-600">still clocked in</span>}
                   </p>
                   <p className="text-xs text-gray-500 truncate">
-                    {c.mode === 'drop_off'
-                      ? `Dropped off${c.site_label ? ` at ${c.site_label}` : ''}`
-                      : `With the technician${c.site_label ? ` · ${c.site_label}` : ''}`}
+                    {teamPlace(c)}
                     {c.clocked_in_by_profile?.full_name ? ` · In by ${c.clocked_in_by_profile.full_name}` : ''}
                     {c.clock_out && c.clocked_out_by_profile?.full_name ? ` · Out by ${c.clocked_out_by_profile.full_name}` : ''}
                   </p>
+                  <TeamShiftAdjustedNote shift={c} />
                 </div>
-                <span className="text-sm font-semibold text-gray-700 tabular-nums shrink-0">{formatSpan(c.clock_in, c.clock_out)}</span>
+                <div className="text-right shrink-0">
+                  <span className="text-sm font-semibold text-gray-700 tabular-nums">{formatSpan(c.clock_in, c.clock_out)}</span>
+                  {isAdmin && (
+                    <button type="button" onClick={() => setEditing(c)} className="block ml-auto text-xs font-semibold text-blue-600 hover:text-blue-700">
+                      Edit times
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -135,6 +151,25 @@ export default function TeamMemberLogPage() {
           emptyLabel="This team member hasn't been logged on site yet."
         />
       </div>
+
+      {editing && (
+        <ClockTimesModal
+          title={member.is_casual ? 'Edit casual clock-in' : 'Edit team member clock-in'}
+          personName={member.full_name}
+          startLabel="Clocked in"
+          endLabel="Clocked out"
+          openLabel="Still clocked in"
+          start={editing.clock_in}
+          end={editing.clock_out}
+          originalStart={editing.original_clock_in}
+          originalEnd={editing.original_clock_out}
+          note={`${teamPlace(editing)}${editing.clocked_in_by_profile?.full_name ? ` · clocked in by ${editing.clocked_in_by_profile.full_name}` : ''}. Set a clock-out to close one that was never tapped.`}
+          onSubmit={async ({ start, end, reason }) => {
+            await adjustTeamShiftTimes(editing.id, { clock_in: start, clock_out: end }, reason)
+          }}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
     </PageContainer>
   )

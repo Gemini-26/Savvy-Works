@@ -120,14 +120,19 @@ export async function fetchActiveShiftsForCompany() {
   return data || []
 }
 
-// Company-wide: most recent completed shifts across all users, newest first.
-export async function fetchShiftHistoryForCompany(limit = 100) {
-  const { data, error } = await supabase
+// Company-wide: completed shifts across all users, newest first. With a
+// { from, to } range (ISO instants, `to` exclusive) it returns everything that
+// started in it instead of just the latest `limit`.
+export async function fetchShiftHistoryForCompany(limit = 100, { from, to } = {}) {
+  let query = supabase
     .from('work_shifts')
     .select('*, profiles:technician_id (id, full_name, role, color), clocked_out_by_profile:clocked_out_by (full_name)')
     .not('clock_out', 'is', null)
     .order('clock_in', { ascending: false })
-    .limit(limit)
+    .limit(from || to ? 2000 : limit)
+  if (from) query = query.gte('clock_in', from)
+  if (to) query = query.lt('clock_in', to)
+  const { data, error } = await query
   if (error) throw error
   return data || []
 }

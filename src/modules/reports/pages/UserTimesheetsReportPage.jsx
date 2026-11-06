@@ -7,36 +7,24 @@ import { fetchActiveShiftsForCompany, fetchShiftHistoryForCompany, onWorkShiftCh
 import { fetchOpenTeamShifts, fetchTeamShiftHistoryForCompany, onTeamShiftChange, adjustTeamShiftTimes } from '../../../shared/services/teamShiftService'
 import { formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 import ClockTimesModal from '../../../shared/components/ClockTimesModal'
+import DateRangeFilter from '../../../shared/components/DateRangeFilter'
+import TeamShiftAdjustedNote from '../../../shared/components/TeamShiftAdjustedNote'
+import { makeRange, rangeBounds, isValidRange } from '../../../shared/utils/dateRange'
+import { teamPlace } from '../../../shared/utils/teamShiftText'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 
-const clockTime = iso => new Date(iso).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
-
 // Team members have no login: a technician clocks them in and out, either
-// with them or by dropping them at a job site.
-function teamPlace(t) {
-  if (t.mode === 'drop_off') return `Dropped off${t.site_label ? ` at ${t.site_label}` : ''}`
-  return `With the technician${t.site_label ? ` · ${t.site_label}` : ''}`
-}
-
-function TeamBadge() {
-  return (
+// with them or by dropping them at a job site. One-day casuals are team
+// members too, flagged so they read differently here.
+function TeamBadge({ casual = false }) {
+  return casual ? (
+    <span className="ml-1.5 text-[10px] font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-1.5 py-0.5 align-middle">
+      Casual
+    </span>
+  ) : (
     <span className="ml-1.5 text-[10px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-1.5 py-0.5 align-middle">
       Team
     </span>
-  )
-}
-
-// Same idea as AdjustedNote, for a team member's clock-in an admin corrected
-// (the database keeps the first values in original_clock_in/out).
-function TeamAdjustedNote({ shift }) {
-  if (!shift.original_clock_in && !shift.original_clock_out) return null
-  return (
-    <p className="text-xs text-amber-600">
-      Adjusted by an admin
-      {shift.original_clock_in && ` · originally in ${clockTime(shift.original_clock_in)}`}
-      {shift.original_clock_out && ` · out ${clockTime(shift.original_clock_out)}`}
-      {shift.note && <span className="text-gray-400"> · {shift.note}</span>}
-    </p>
   )
 }
 
@@ -74,25 +62,38 @@ export default function UserTimesheetsReportPage() {
   const [teamActive, setTeamActive] = useState([])
   const [teamHistory, setTeamHistory] = useState([])
   const [editingTeam, setEditingTeam] = useState(null)
+  const [range, setRange] = useState(() => makeRange('7d'))
+  const [reloadKey, setReloadKey] = useState(0)
   const { isAdmin } = useCurrentUser()
 
-  function reload() {
-    return Promise.all([
+  const { from, to } = range
+  const valid = isValidRange({ from, to })
+
+  // Who is clocked in now is always shown; the history is whatever started in
+  // the chosen dates (so an old forgotten clock-out can be found and fixed).
+  useEffect(() => {
+    if (!valid) return
+    let cancelled = false
+    const { fromIso, toIso } = rangeBounds({ from, to })
+    const dates = { from: fromIso, to: toIso }
+    Promise.all([
       fetchActiveShiftsForCompany(),
-      fetchShiftHistoryForCompany(),
+      fetchShiftHistoryForCompany(100, dates),
       fetchOpenTeamShifts(),
-      fetchTeamShiftHistoryForCompany(),
-    ]).then(([a, h, ta, th]) => { setActive(a); setHistory(h); setTeamActive(ta); setTeamHistory(th) })
-  }
+      fetchTeamShiftHistoryForCompany(100, dates),
+    ])
+      .then(([a, h, ta, th]) => {
+        if (cancelled) return
+        setActive(a); setHistory(h); setTeamActive(ta); setTeamHistory(th); setError(null)
+      })
+      .catch(err => { if (!cancelled) setError(err.message || 'Failed to load timesheets') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [from, to, valid, reloadKey])
 
+  // Any clock-in/out or admin edit elsewhere refetches the lot.
   useEffect(() => {
-    reload()
-      .catch(err => setError(err.message || 'Failed to load timesheets'))
-      .finally(() => setLoading(false))
-  }, [])
-
-  useEffect(() => {
-    const refresh = () => { reload().catch(() => {}) }
+    const refresh = () => setReloadKey(k => k + 1)
     const offWork = onWorkShiftChange(refresh)
     const offTeam = onTeamShiftChange(refresh)
     return () => { offWork(); offTeam() }
@@ -177,7 +178,7 @@ export default function UserTimesheetsReportPage() {
                   <div key={t.id} className="flex items-center justify-between py-2.5">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">
-                        {t.team_members?.full_name || 'Unknown'}<TeamBadge />
+                        {t.team_members?.full_name || 'Unknown'}<TeamBadge casual={!!t.team_members?.is_casual} />
                       </p>
                       <p className="text-xs text-gray-500 truncate">{teamPlace(t)}</p>
                     </div>
@@ -187,7 +188,7 @@ export default function UserTimesheetsReportPage() {
                       {t.clocked_in_by_profile?.full_name && (
                         <p className="text-xs text-gray-400">In by {t.clocked_in_by_profile.full_name}</p>
                       )}
-                      <TeamAdjustedNote shift={t} />
+                      <TeamShiftAdjustedNote shift={t} />
                       {isAdmin && (
                         <button type="button" onClick={() => setEditingTeam(t)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">
                           Edit times
@@ -204,6 +205,10 @@ export default function UserTimesheetsReportPage() {
             <div className="flex items-center gap-2 text-sm font-bold text-gray-900 mb-3">
               <Clock size={16} /> Shift History
             </div>
+            <div className="mb-4">
+              <DateRangeFilter value={range} onChange={setRange} />
+            </div>
+            {!valid && <p className="text-sm text-gray-400">Pick a from and to date.</p>}
             {historyDays.length === 0 ? (
               <EmptyState title="No completed shifts yet" description="Completed clock in/out shifts will show up here." />
             ) : (
@@ -215,7 +220,7 @@ export default function UserTimesheetsReportPage() {
                       {historyByDay[day].map(({ kind, s }) => kind === 'team' ? (
                         <div key={s.id} className="flex items-center justify-between py-1.5">
                           <div className="min-w-0">
-                            <p className="text-sm text-gray-700">{s.team_members?.full_name || 'Unknown'}<TeamBadge /></p>
+                            <p className="text-sm text-gray-700">{s.team_members?.full_name || 'Unknown'}<TeamBadge casual={!!s.team_members?.is_casual} /></p>
                             <p className="text-xs text-gray-400 truncate">{teamPlace(s)}</p>
                           </div>
                           <div className="text-right shrink-0 ml-3">
@@ -225,7 +230,7 @@ export default function UserTimesheetsReportPage() {
                               {s.clocked_in_by_profile?.full_name ? `In by ${s.clocked_in_by_profile.full_name}` : ''}
                               {s.clocked_out_by_profile?.full_name ? ` · Out by ${s.clocked_out_by_profile.full_name}` : ''}
                             </p>
-                            <TeamAdjustedNote shift={s} />
+                            <TeamShiftAdjustedNote shift={s} />
                             {isAdmin && (
                               <button type="button" onClick={() => setEditingTeam(s)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">
                                 Edit times
@@ -273,7 +278,6 @@ export default function UserTimesheetsReportPage() {
           originalEnd={editing.original_clock_out}
           onSubmit={async ({ start, end, reason }) => {
             await adjustShiftTimes(editing.id, { clock_in: start, clock_out: end }, reason)
-            await reload()
           }}
           onClose={() => setEditing(null)}
         />
@@ -293,7 +297,6 @@ export default function UserTimesheetsReportPage() {
           note={`${teamPlace(editingTeam)}${editingTeam.clocked_in_by_profile?.full_name ? ` · clocked in by ${editingTeam.clocked_in_by_profile.full_name}` : ''}. Set a clock-out to close one that was never tapped.`}
           onSubmit={async ({ start, end, reason }) => {
             await adjustTeamShiftTimes(editingTeam.id, { clock_in: start, clock_out: end }, reason)
-            await reload()
           }}
           onClose={() => setEditingTeam(null)}
         />

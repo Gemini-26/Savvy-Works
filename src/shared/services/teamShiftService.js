@@ -33,6 +33,13 @@ const SHIFT_SELECT = `
   clocked_out_by_profile:clocked_out_by(full_name)
 `
 
+// The same select, but the team_members join is inner so a filter on it
+// (is_casual) drops the shift rows too, not just the embedded member.
+const CASUAL_SHIFT_SELECT = SHIFT_SELECT.replace('team_members(', 'team_members!inner(')
+
+// A date-range query returns everything in the range, up to this safety cap.
+const RANGE_LIMIT = 2000
+
 // The table not existing yet (migration not applied) must never break the
 // clock button — treat it as "nobody is clocked in".
 function isMissingTable(error) {
@@ -102,15 +109,39 @@ export async function fetchLiveTeamMembers() {
   })
 }
 
-// Company-wide: most recent completed clock-ins for every team member, newest
-// first — the team half of the User Timesheets report.
-export async function fetchTeamShiftHistoryForCompany(limit = 100) {
-  const { data, error } = await supabase
+// Company-wide: completed clock-ins for every team member, newest first — the
+// team half of the User Timesheets report. With a { from, to } range (ISO
+// instants, `to` exclusive) it returns everything that started in it.
+export async function fetchTeamShiftHistoryForCompany(limit = 100, { from, to } = {}) {
+  let query = supabase
     .from('team_member_shifts')
     .select(SHIFT_SELECT)
     .not('clock_out', 'is', null)
     .order('clock_in', { ascending: false })
-    .limit(limit)
+    .limit(from || to ? RANGE_LIMIT : limit)
+  if (from) query = query.gte('clock_in', from)
+  if (to) query = query.lt('clock_in', to)
+  const { data, error } = await query
+  if (error) {
+    if (isMissingTable(error)) return []
+    throw error
+  }
+  return data || []
+}
+
+// Every clock-in that started in a date range — open ones included — newest
+// first. `casualOnly` keeps just the one-day casuals (team_members.is_casual).
+// from/to are ISO instants, `to` exclusive.
+export async function fetchTeamShiftsInRange({ from, to, casualOnly = false } = {}) {
+  let query = supabase
+    .from('team_member_shifts')
+    .select(casualOnly ? CASUAL_SHIFT_SELECT : SHIFT_SELECT)
+    .order('clock_in', { ascending: false })
+    .limit(RANGE_LIMIT)
+  if (casualOnly) query = query.eq('team_members.is_casual', true)
+  if (from) query = query.gte('clock_in', from)
+  if (to) query = query.lt('clock_in', to)
+  const { data, error } = await query
   if (error) {
     if (isMissingTable(error)) return []
     throw error

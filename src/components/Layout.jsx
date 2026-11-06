@@ -199,6 +199,7 @@ const NAV = [
           { label: 'Live Team Members',     path: '/users/team/live' },
           { label: 'Active Team Members',   path: '/users/team/active' },
           { label: 'Inactive Team Members', path: '/users/team/inactive' },
+          { label: 'Casual Clock-ins',      path: '/users/team/casuals' },
         ],
       },
       {

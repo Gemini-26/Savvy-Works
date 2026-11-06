@@ -13,6 +13,7 @@ import LiveUsersPage from '../modules/users/pages/LiveUsersPage'
 import LiveTeamMembersPage from '../modules/users/pages/LiveTeamMembersPage'
 import ActiveTeamMembersPage from '../modules/users/pages/ActiveTeamMembersPage'
 import TeamMemberLogPage from '../modules/users/pages/TeamMemberLogPage'
+import CasualClockInsPage from '../modules/users/pages/CasualClockInsPage'
 import NewUserPage from '../modules/users/pages/NewUserPage'
 import UserDetailPage from '../modules/users/pages/UserDetailPage'
 import ProfileDocumentsPage from '../modules/users/pages/ProfileDocumentsPage'
@@ -175,6 +176,7 @@ export const moduleRoutes = [
   { path: 'users/team/live',     element: <LiveTeamMembersPage />,                      title: 'Live Team Members' },
   { path: 'users/team/active',   element: <ActiveTeamMembersPage activeOnly={true} />,  title: 'Active Team Members' },
   { path: 'users/team/inactive', element: <ActiveTeamMembersPage activeOnly={false} />,  title: 'Inactive Team Members' },
+  { path: 'users/team/casuals',  element: <CasualClockInsPage />,                       title: 'Casual Clock-ins' },
   { path: 'users/team/:id',      element: <TeamMemberLogPage />,                        title: 'Team Member Log' },
   { path: 'users/team/:id/documents', element: <TeamMemberDocumentsPage />,             title: 'Team Member Documents' },
   { path: 'users/timeoff/awaiting',    title: 'Time Off Awaiting Approval' },
