@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
+import Avatar from '../../../shared/components/Avatar'
 import {
   fetchInvoice, updateInvoice, deleteInvoice, createPayfastPayment, buildPayfastPaymentLink,
   fetchInvoiceEvents, logInvoiceEvent, markInvoiceRefunded, markInvoiceDisputed, sendInvoiceReceiptEmail,
@@ -644,12 +645,7 @@ export default function InvoiceDetailPage() {
                 {technicians.map((t, i) => (
                   <tr key={i} className="border-t border-gray-50">
                     <td className="py-1.5 flex items-center gap-2">
-                      <div
-                        className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-                        style={{ backgroundColor: t.color || '#3B82F6' }}
-                      >
-                        {t.technician_name?.[0]?.toUpperCase()}
-                      </div>
+                      <Avatar name={t.technician_name} color={t.color || '#3B82F6'} url={t.avatar_url} size={20} />
                       {t.technician_name}
                     </td>
                     <td className="py-1.5 text-gray-600">{formatDateTime(t.scheduled_start) || '—'}</td>

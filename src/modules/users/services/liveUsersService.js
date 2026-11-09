@@ -49,6 +49,7 @@ export async function fetchLiveUsers() {
       fullName: shift.profiles?.full_name ?? 'Unknown',
       role: shift.profiles?.role ?? 'technician',
       color: shift.profiles?.color ?? null,
+      avatarUrl: shift.profiles?.avatar_url ?? null,
       clockIn: shift.clock_in,
       lastLat: shift.last_lat ?? null,
       lastLng: shift.last_lng ?? null,

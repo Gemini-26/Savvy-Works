@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { LogIn, KeyRound, Clock, Briefcase, Wrench, MapPin } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
+import Avatar from '../../../shared/components/Avatar'
 import { fetchProfile } from '../services/profileService'
 import { fetchUserActivityLog } from '../services/activityLogService'
 import { fetchShiftHistory } from '../../../shared/services/workShiftService'
@@ -67,7 +68,6 @@ export default function UserActivityLogPage() {
   if (error)   return <PageContainer><p className="text-sm text-red-500 mt-8">{error}</p></PageContainer>
   if (!profile) return <PageContainer><p className="text-sm text-red-500 mt-8">User not found.</p></PageContainer>
 
-  const initial = profile.full_name?.[0]?.toUpperCase() || '?'
   const filtered = filter === 'all' ? events : events.filter(e => e.category === filter)
   // Technicians always get the tab, even at zero, so the absence of on-site
   // work reads as a fact rather than a missing feature. Anyone else only
@@ -84,12 +84,7 @@ export default function UserActivityLogPage() {
 
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center font-black text-xl text-white"
-            style={{ backgroundColor: profile.color || '#3B82F6' }}
-          >
-            {initial}
-          </div>
+          <Avatar name={profile.full_name} color={profile.color || '#3B82F6'} url={profile.avatar_url} size={48} />
           <div>
             <h1 className="text-xl font-bold text-gray-900">{profile.full_name}</h1>
             <p className="text-sm text-gray-500 capitalize">{profile.role} · Activity Log</p>

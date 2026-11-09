@@ -4,6 +4,7 @@ import { Radio, MapPin, Briefcase, Clock, Satellite, LogOut } from 'lucide-react
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
+import Avatar from '../../../shared/components/Avatar'
 import DashboardCharts from '../../../shared/components/DashboardCharts.jsx'
 import LiveUsersMap from '../components/LiveUsersMap.jsx'
 import { fetchLiveUsers, fetchSiteVisits } from '../services/liveUsersService'
@@ -12,18 +13,6 @@ import { formatHoursDuration } from '../../../shared/utils/shiftSummary'
 import { reverseGeocode } from '../../../shared/utils/geocode'
 
 const POLL_MS = 20000
-const AVATAR_COLORS = ['#3B82F6', '#10B981', '#8B5CF6', '#F59E0B', '#EF4444', '#14B8A6', '#6366F1', '#EC4899']
-
-function Avatar({ name, color }) {
-  const bg = color || AVATAR_COLORS[name?.charCodeAt(0) % AVATAR_COLORS.length] || '#3B82F6'
-  return (
-    <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm uppercase flex-shrink-0"
-      style={{ backgroundColor: bg }}>
-      {name?.[0] ?? '?'}
-    </div>
-  )
-}
-
 function LiveDuration({ since }) {
   const [, tick] = useState(0)
   useEffect(() => {
@@ -227,7 +216,7 @@ export default function LiveUsersPage() {
             <div key={u.shiftId} className="bg-white rounded-xl border border-gray-200 p-5">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
-                  <Avatar name={u.fullName} color={u.color} />
+                  <Avatar name={u.fullName} color={u.color} url={u.avatarUrl} size={40} />
                   <div>
                     <Link to={`/users/${u.technicianId}`} className="font-semibold text-gray-900 hover:text-blue-600">
                       {u.fullName}

@@ -8,6 +8,7 @@ import { fetchActiveShift, clockInForWork, clockOutForWork, fetchShiftHistory, o
 import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
 import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 import BackgroundAccessCard from '../../../shared/components/BackgroundAccessCard'
+import AvatarUploader from '../../../shared/components/AvatarUploader'
 import { useFaceCheck } from '../../../shared/hooks/useFaceCheck'
 
 function formatDuration(ms) {
@@ -95,18 +96,10 @@ export default function MyProfilePage({ profile }) {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-6 max-w-lg space-y-5">
-        <div className="flex items-center gap-4">
-          <div
-            className="w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-2xl shrink-0"
-            style={{ backgroundColor: profile.color || '#3B82F6' }}
-          >
-            {profile.full_name?.[0]?.toUpperCase() || '?'}
-          </div>
-          <div>
-            <p className="text-lg font-bold text-gray-900">{profile.full_name}</p>
-            <p className="text-sm text-gray-500 capitalize">{profile.role}</p>
-          </div>
-        </div>
+        <AvatarUploader profile={profile} size={72}>
+          <p className="text-lg font-bold text-gray-900">{profile.full_name}</p>
+          <p className="text-sm text-gray-500 capitalize">{profile.role}</p>
+        </AvatarUploader>
 
         <div className="space-y-2 pt-2 border-t border-gray-100">
           {profile.email && (

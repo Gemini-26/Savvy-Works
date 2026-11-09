@@ -65,7 +65,7 @@ export async function fetchAppointmentsForDay(dateStr) {
     .select(`
       *,
       jobs(id, job_ref, title, priority, status, customers(customer_name)),
-      appointment_assignments(technician_id, profiles(id, full_name, color, role))
+      appointment_assignments(technician_id, profiles(id, full_name, color, role, avatar_url))
     `)
     .gte('scheduled_start', start)
     .lte('scheduled_start', end)
@@ -81,7 +81,7 @@ export async function fetchAppointmentsForJob(jobId) {
       *,
       appointment_assignments(
         *,
-        profiles(id, full_name, color),
+        profiles(id, full_name, color, avatar_url),
         assignment_team_members(team_members(id, full_name, role_title, is_casual))
       )
     `)
@@ -99,7 +99,7 @@ export async function fetchJobTechnicianSummary(jobId) {
     .from('appointments')
     .select(`
       scheduled_start, scheduled_end,
-      appointment_assignments(technician_id, actual_start, actual_end, profiles(id, full_name, color))
+      appointment_assignments(technician_id, actual_start, actual_end, profiles(id, full_name, color, avatar_url))
     `)
     .eq('job_id', jobId)
     .order('scheduled_start')
@@ -109,6 +109,7 @@ export async function fetchJobTechnicianSummary(jobId) {
     (appt.appointment_assignments || []).map(a => ({
       technician_name: a.profiles?.full_name || 'Unknown',
       color:           a.profiles?.color,
+      avatar_url:      a.profiles?.avatar_url,
       scheduled_start: appt.scheduled_start,
       scheduled_end:   appt.scheduled_end,
       actual_start:    a.actual_start,

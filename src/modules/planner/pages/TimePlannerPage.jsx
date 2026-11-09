@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
+import Avatar from '../../../shared/components/Avatar'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { useRefreshOnFocus } from '../../../shared/hooks/useRefreshOnFocus'
 import { fetchAppointmentsForDay } from '../services/appointmentService'
@@ -96,7 +97,6 @@ function AppointmentBlock({ appt, top, height, onPreview }) {
 }
 
 function TechRow({ tech, appointments, onPreview, onClickCell, isUnassigned }) {
-  const initial = tech.full_name?.[0]?.toUpperCase() || '?'
   const color   = tech.color || '#6b7280'
 
   const { placed, laneCount } = assignLanes(appointments)
@@ -116,12 +116,7 @@ function TechRow({ tech, appointments, onPreview, onClickCell, isUnassigned }) {
             ?
           </div>
         ) : (
-          <div
-            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-            style={{ backgroundColor: color }}
-          >
-            {initial}
-          </div>
+          <Avatar name={tech.full_name} color={color} url={tech.avatar_url} size={32} />
         )}
         <div className="min-w-0">
           <div className="text-sm font-medium text-gray-800 truncate leading-tight">{tech.full_name}</div>

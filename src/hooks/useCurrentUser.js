@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { getCurrentProfile, onSessionChange } from '../services/authService'
+import { onAvatarChange } from '../shared/services/avatarService'
 
 export function useCurrentUser() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [failed, setFailed] = useState(false)
   const lastUserId = useRef(undefined)
+
+  // A new profile picture shows in the header and on the profile page straight
+  // away, without a reload.
+  useEffect(() => onAvatarChange((profileId, avatarUrl) => {
+    setProfile(p => (p && p.id === profileId ? { ...p, avatar_url: avatarUrl } : p))
+  }), [])
 
   useEffect(() => {
     function load() {

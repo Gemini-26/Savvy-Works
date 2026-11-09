@@ -3,6 +3,7 @@ import { Clock, Users } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
+import Avatar from '../../../shared/components/Avatar'
 import { fetchActiveShiftsForCompany, fetchShiftHistoryForCompany, onWorkShiftChange, adjustShiftTimes } from '../../../shared/services/workShiftService'
 import { fetchOpenTeamShifts, fetchTeamShiftHistoryForCompany, onTeamShiftChange, adjustTeamShiftTimes } from '../../../shared/services/teamShiftService'
 import { formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
@@ -139,12 +140,7 @@ export default function UserTimesheetsReportPage() {
                 {active.map(s => (
                   <div key={s.id} className="flex items-center justify-between py-2.5">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0"
-                        style={{ backgroundColor: s.profiles?.color || '#3B82F6' }}
-                      >
-                        {s.profiles?.full_name?.[0]?.toUpperCase() || '?'}
-                      </div>
+                      <Avatar name={s.profiles?.full_name} color={s.profiles?.color || '#3B82F6'} url={s.profiles?.avatar_url} size={32} />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{s.profiles?.full_name || 'Unknown'}</p>
                         <p className="text-xs text-gray-500 capitalize">{s.profiles?.role}</p>

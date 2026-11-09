@@ -10,6 +10,7 @@ import ClockHoursSummary from '../../../shared/components/ClockHoursSummary'
 import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import BackgroundAccessCard from '../../../shared/components/BackgroundAccessCard'
 import ThemePicker from '../../../shared/components/ThemePicker'
+import AvatarUploader from '../../../shared/components/AvatarUploader'
 import { forgetThisDevice } from '../../../shared/services/pushService'
 import PolicyCard from '../../policies/components/PolicyCard'
 import { formatTime, formatDateTime, formatDate, toDateStr } from '../../../shared/utils/formatDate'
@@ -111,18 +112,10 @@ export default function ProfilePage({ profile }) {
       <h1 className="text-lg font-bold text-gray-900">Profile</h1>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-        <div className="flex items-center gap-3">
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg shrink-0"
-            style={{ backgroundColor: profile?.color || '#3B82F6' }}
-          >
-            {profile?.full_name?.[0]?.toUpperCase() || '?'}
-          </div>
-          <div>
-            <p className="text-sm font-bold text-gray-900">{profile?.full_name}</p>
-            <p className="text-xs text-gray-500 capitalize">{profile?.role}</p>
-          </div>
-        </div>
+        <AvatarUploader profile={profile} size={64}>
+          <p className="text-sm font-bold text-gray-900">{profile?.full_name}</p>
+          <p className="text-xs text-gray-500 capitalize">{profile?.role}</p>
+        </AvatarUploader>
         <div className="text-sm text-gray-600 space-y-1 pt-2 border-t border-gray-100">
           {profile?.email && <p>{profile.email}</p>}
           {profile?.phone && <p>{profile.phone}</p>}

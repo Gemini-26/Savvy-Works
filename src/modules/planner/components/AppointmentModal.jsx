@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../../lib/supabase'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
+import Avatar from '../../../shared/components/Avatar'
 import {
   createAppointment,
   updateAppointment,
@@ -288,12 +289,7 @@ export default function AppointmentModal({
                       onChange={() => toggleTech(p.id)}
                       className="w-4 h-4 rounded border-gray-300 text-blue-600"
                     />
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                      style={{ backgroundColor: p.color || '#3B82F6' }}
-                    >
-                      {p.full_name?.[0]?.toUpperCase()}
-                    </div>
+                    <Avatar name={p.full_name} color={p.color || '#3B82F6'} url={p.avatar_url} size={24} />
                     <div>
                       <div className="text-sm font-medium text-gray-800">{p.full_name}</div>
                       <div className="text-xs text-gray-400 capitalize">{p.role}</div>

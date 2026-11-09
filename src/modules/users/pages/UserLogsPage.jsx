@@ -3,29 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import PageHeader from '../../../shared/components/PageHeader'
 import EmptyState from '../../../shared/components/EmptyState'
+import Avatar from '../../../shared/components/Avatar'
 import { fetchProfiles } from '../services/profileService'
 
 const ROLE_COLORS = {
   admin:      'bg-purple-100 text-purple-700',
   technician: 'bg-blue-100 text-blue-700',
   viewer:     'bg-gray-100 text-gray-600',
-}
-
-const AVATAR_COLORS = [
-  '#3B82F6','#10B981','#8B5CF6','#F59E0B',
-  '#EF4444','#14B8A6','#6366F1','#EC4899',
-]
-
-function Avatar({ name, color }) {
-  const bg = color || AVATAR_COLORS[name?.charCodeAt(0) % AVATAR_COLORS.length] || '#3B82F6'
-  return (
-    <div
-      className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-sm uppercase flex-shrink-0"
-      style={{ backgroundColor: bg }}
-    >
-      {name?.[0] ?? '?'}
-    </div>
-  )
 }
 
 export default function UserLogsPage() {
@@ -75,7 +59,7 @@ export default function UserLogsPage() {
                 >
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-3">
-                      <Avatar name={p.full_name} color={p.color} />
+                      <Avatar name={p.full_name} color={p.color} url={p.avatar_url} size={32} />
                       <span className="font-medium text-gray-900">{p.full_name}</span>
                     </div>
                   </td>

@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { APPOINTMENT_STATUS_META } from '../../../shared/constants/appointmentStatuses'
+import Avatar from '../../../shared/components/Avatar'
 
 const PRIORITY_DOT = {
   low:    'bg-gray-300',
@@ -86,12 +87,7 @@ export default function AppointmentPreviewModal({ appointment, onClose, onEdit }
               <div className="flex flex-wrap gap-2">
                 {techs.map(t => (
                   <div key={t.id} className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-full pl-1 pr-2.5 py-1">
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
-                      style={{ backgroundColor: t.color || '#6b7280' }}
-                    >
-                      {t.full_name?.[0]?.toUpperCase() || '?'}
-                    </div>
+                    <Avatar name={t.full_name} color={t.color || '#6b7280'} url={t.avatar_url} size={20} />
                     <span className="text-xs font-medium text-gray-700">{t.full_name}</span>
                   </div>
                 ))}

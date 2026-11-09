@@ -15,6 +15,7 @@ import ClockBubble from '../shared/components/ClockBubble'
 import PolicyReminder from '../modules/policies/components/PolicyReminder'
 import { usePolicyProgress } from '../modules/policies/hooks/usePolicyProgress'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import Avatar from '../shared/components/Avatar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Full navigation structure — mirrors menu.txt
@@ -386,7 +387,6 @@ export default function Layout() {
   const location = useLocation()
   const { profile } = useCurrentUser()
   const policies = usePolicyProgress(profile)
-  const initial = profile?.full_name?.trim().charAt(0).toUpperCase() || '?'
 
   // Close everything on route change
   useEffect(() => {
@@ -483,7 +483,7 @@ export default function Layout() {
               onClick={openUserMenu}
               className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-gray-600 hover:bg-gray-100 transition-colors"
             >
-              <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-xs">{initial}</div>
+              <Avatar name={profile?.full_name} color="#2563eb" url={profile?.avatar_url} size={28} />
               <ChevronDown size={12} className={`transition-transform ${userOpen ? 'rotate-180' : ''}`}/>
             </button>
           </div>

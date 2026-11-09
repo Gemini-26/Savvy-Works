@@ -113,7 +113,7 @@ export async function fetchShiftHistory(technicianId, limit = 30) {
 export async function fetchActiveShiftsForCompany() {
   const { data, error } = await supabase
     .from('work_shifts')
-    .select('*, profiles:technician_id (id, full_name, role, color)')
+    .select('*, profiles:technician_id (id, full_name, role, color, avatar_url)')
     .is('clock_out', null)
     .order('clock_in', { ascending: false })
   if (error) throw error
@@ -126,7 +126,7 @@ export async function fetchActiveShiftsForCompany() {
 export async function fetchShiftHistoryForCompany(limit = 100, { from, to } = {}) {
   let query = supabase
     .from('work_shifts')
-    .select('*, profiles:technician_id (id, full_name, role, color), clocked_out_by_profile:clocked_out_by (full_name)')
+    .select('*, profiles:technician_id (id, full_name, role, color, avatar_url), clocked_out_by_profile:clocked_out_by (full_name)')
     .not('clock_out', 'is', null)
     .order('clock_in', { ascending: false })
     .limit(from || to ? 2000 : limit)

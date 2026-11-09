@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
+import Avatar from '../../../shared/components/Avatar'
 import { fetchJob, updateJob, deleteJob, fetchJobPhotos, uploadJobPhotos, deleteJobPhoto, fetchJobDocuments, uploadJobDocument, deleteJobDocument, confirmJobComplete, fetchJobItems, updateJobItems } from '../services/jobService'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { fetchAppointmentsForJob, clockInAssignment, clockOutAssignment } from '../../planner/services/appointmentService'
@@ -711,12 +712,7 @@ export default function JobDetailPage() {
                             <div key={a.id} className="px-3 py-2">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
-                                  <div
-                                    className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
-                                    style={{ backgroundColor: a.profiles?.color || '#3B82F6' }}
-                                  >
-                                    {a.profiles?.full_name?.[0]?.toUpperCase() || '?'}
-                                  </div>
+                                  <Avatar name={a.profiles?.full_name} color={a.profiles?.color || '#3B82F6'} url={a.profiles?.avatar_url} size={24} />
                                   <div>
                                     <div className="text-sm text-gray-800">
                                       {a.profiles?.full_name || 'Unknown'}

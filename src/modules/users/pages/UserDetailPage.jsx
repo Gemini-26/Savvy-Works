@@ -3,6 +3,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import { fetchProfile, updateProfile, callChangePassword, fetchPendingPasswordRequest, denyPasswordRequest } from '../services/profileService'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
+import Avatar from '../../../shared/components/Avatar'
+import AvatarUploader from '../../../shared/components/AvatarUploader'
 
 const ROLES  = ['technician', 'admin', 'viewer']
 const COLORS = [
@@ -109,7 +111,11 @@ export default function UserDetailPage() {
     setSaving(true)
     setError(null)
     try {
-      await updateProfile(id, form)
+      // The photo is changed on its own (AvatarUploader), never through this
+      // form, so a stale copy of it here can't put an old picture back.
+      const details = { ...form }
+      delete details.avatar_url
+      await updateProfile(id, details)
       setEditing(false)
     } catch (err) {
       setError(err.message || 'Failed to save changes')
@@ -140,7 +146,6 @@ export default function UserDetailPage() {
   if (!form)   return <PageContainer><p className="text-sm text-red-500 mt-8">{error || 'User not found.'}</p></PageContainer>
 
   const ro      = !editing
-  const initial = form.full_name?.[0]?.toUpperCase() || '?'
 
   return (
     <PageContainer>
@@ -148,12 +153,7 @@ export default function UserDetailPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div
-            className="w-12 h-12 rounded-full flex items-center justify-center font-black text-xl text-white"
-            style={{ backgroundColor: form.color || '#3B82F6' }}
-          >
-            {initial}
-          </div>
+          <Avatar name={form.full_name} color={form.color || '#3B82F6'} url={form.avatar_url} size={48} />
           <div>
             <h1 className="text-xl font-bold text-gray-900">{form.full_name}</h1>
             <p className="text-sm text-gray-500 capitalize">{form.role}</p>
@@ -231,6 +231,16 @@ export default function UserDetailPage() {
 
       <form id="user-detail-form" onSubmit={handleSave}>
         <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4 max-w-lg">
+
+          {(isAdmin || me?.id === id) && (
+            <Field label="Photo">
+              <AvatarUploader
+                profile={form}
+                size={56}
+                onChange={url => set('avatar_url', url)}
+              />
+            </Field>
+          )}
 
           <Field label="Full Name">
             {ro
