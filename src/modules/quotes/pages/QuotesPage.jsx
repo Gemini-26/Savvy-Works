@@ -11,7 +11,7 @@ import useListFilters from '../../../shared/hooks/useListFilters'
 import { fetchStaffOptions, toOptions } from '../../../shared/utils/listFilters'
 import { SA_PROVINCES } from '../../../shared/constants/regions'
 import QuotePreviewModal from '../components/QuotePreviewModal'
-import { fetchQuotes, convertQuoteToJob } from '../services/quoteService'
+import { fetchQuotes, convertQuoteToJob, canConvertQuote, confirmConvertQuote } from '../services/quoteService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
 
@@ -105,6 +105,7 @@ export default function QuotesPage({ statusFilter }) {
 
   async function handleConvert(e, quote) {
     e.stopPropagation()
+    if (!confirmConvertQuote(quote)) return
     setConvertingId(quote.id)
     setError(null)
     try {
@@ -169,7 +170,7 @@ export default function QuotesPage({ statusFilter }) {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {quotes.map((q) => {
-                const canConvert = q.status === 'accepted' && !q.job_id
+                const canConvert = canConvertQuote(q)
                 return (
                   <tr
                     key={q.id}

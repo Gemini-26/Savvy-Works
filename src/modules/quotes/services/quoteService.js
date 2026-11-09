@@ -133,7 +133,23 @@ export async function deleteQuote(id) {
   if (error) throw error
 }
 
-// Converts an accepted quote into a Job, carrying over customer/site/title/technician.
+// A quote can become a job unless it was rejected, is already converted, or
+// already has a job. It used to require status "accepted", but a quote created
+// from a lead starts as "draft", so the Convert button never showed up for it.
+export function canConvertQuote(quote) {
+  return !!quote && !quote.job_id && !['rejected', 'converted'].includes(quote.status)
+}
+
+// Quotes the customer hasn't accepted yet can still be converted, but the user
+// is asked to confirm first so a draft isn't turned into a job by accident.
+export function confirmConvertQuote(quote) {
+  if (quote.status === 'accepted') return true
+  return window.confirm(
+    `This quote is still "${quote.status}", not Accepted.\n\nConvert it to a job anyway?`
+  )
+}
+
+// Converts a quote into a Job, carrying over customer/site/title/technician.
 export async function convertQuoteToJob(quote) {
   const job_ref = await nextJobNumber()
 
@@ -171,7 +187,7 @@ export async function convertQuoteToJob(quote) {
     if (insertError) throw insertError
   }
 
-  await updateQuote(quote.id, { status: 'converted' })
+  await updateQuote(quote.id, { status: 'converted', job_id: newJob.id })
 
   return newJob
 }

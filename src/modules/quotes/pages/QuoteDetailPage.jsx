@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Eye } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
-import { fetchQuote, updateQuote, deleteQuote, convertQuoteToJob } from '../services/quoteService'
+import { fetchQuote, updateQuote, deleteQuote, convertQuoteToJob, canConvertQuote, confirmConvertQuote } from '../services/quoteService'
 import { useCustomers } from '../../../shared/hooks/useCustomers'
 import { useProfiles } from '../../../shared/hooks/useProfiles'
 import { useItems } from '../hooks/useItems'
@@ -120,6 +120,7 @@ export default function QuoteDetailPage() {
   }
 
   async function handleConvert() {
+    if (!confirmConvertQuote(form)) return
     setConverting(true)
     setError(null)
     try {
@@ -164,7 +165,7 @@ export default function QuoteDetailPage() {
   if (!form)   return <PageContainer><p className="text-sm text-red-500 mt-8">{error || 'Quote not found.'}</p></PageContainer>
 
   const ro = !editing
-  const canConvert = form.status === 'accepted' && !form.job_id
+  const canConvert = canConvertQuote(form)
 
   return (
     <PageContainer>

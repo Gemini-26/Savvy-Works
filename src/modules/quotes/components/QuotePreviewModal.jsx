@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchQuote, convertQuoteToJob } from '../services/quoteService'
+import { fetchQuote, convertQuoteToJob, canConvertQuote, confirmConvertQuote } from '../services/quoteService'
 import { formatCurrency } from '../../../shared/utils/formatCurrency'
 import { formatDate } from '../../../shared/utils/formatDate'
 
@@ -37,6 +37,7 @@ export default function QuotePreviewModal({ quoteId, onClose, onConverted }) {
   }, [quoteId])
 
   async function handleConvert() {
+    if (!confirmConvertQuote(quote)) return
     setConverting(true)
     setError(null)
     try {
@@ -50,7 +51,7 @@ export default function QuotePreviewModal({ quoteId, onClose, onConverted }) {
     }
   }
 
-  const canConvert = quote && quote.status === 'accepted' && !quote.job_id
+  const canConvert = canConvertQuote(quote)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
