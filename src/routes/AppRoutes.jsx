@@ -5,6 +5,9 @@ import Dashboard from '../pages/Dashboard'
 import Soon from '../shared/components/Soon'
 import { generateModuleRoutes } from './moduleRoutes'
 import { useCurrentUser } from '../hooks/useCurrentUser'
+import { useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+import { checkAccess, endDeactivatedSession } from '../services/authService'
 import TechnicianLayout from '../modules/technician/components/TechnicianLayout'
 import MyJobsPage from '../modules/technician/pages/MyJobsPage'
 import JobDetailPage from '../modules/technician/pages/JobDetailPage'
@@ -20,6 +23,42 @@ import NoProfileScreen from '../components/NoProfileScreen'
 export default function AppRoutes({ session }) {
   const routes = generateModuleRoutes()
   const { profile, loading, failed } = useCurrentUser()
+
+  // Someone deactivated while already signed in: the server ends their session
+  // (and bans the login), but this tab won't notice until it next talks to the
+  // server. Ask again whenever the tab comes back into view and every 5 minutes.
+  useEffect(() => {
+    if (!session) return undefined
+    let stopped = false
+    async function recheck() {
+      if (document.visibilityState === 'hidden') return
+      const result = await checkAccess().catch(() => 'unknown')
+      if (stopped) return
+      if (result === 'inactive') endDeactivatedSession()
+      else if (result === 'revoked') supabase.auth.signOut()
+    }
+    const timer = setInterval(recheck, 5 * 60 * 1000)
+    document.addEventListener('visibilitychange', recheck)
+    return () => {
+      stopped = true
+      clearInterval(timer)
+      document.removeEventListener('visibilitychange', recheck)
+    }
+  }, [session])
+
+  // Deactivated: don't render the app at all, just end the session. The login
+  // page then shows why (see DEACTIVATED_FLAG).
+  useEffect(() => {
+    if (session && profile && profile.is_active === false) endDeactivatedSession()
+  }, [session, profile])
+
+  if (session && profile?.is_active === false) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <p className="text-sm text-gray-500">Signing you out…</p>
+      </div>
+    )
+  }
 
   if (session && loading) {
     return (

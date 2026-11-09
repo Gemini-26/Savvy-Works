@@ -12,6 +12,37 @@ export function onSessionChange(callback) {
   return subscription
 }
 
+// Set just before a deactivated person is signed out, so the login page can
+// say why instead of dropping them on a blank form.
+export const DEACTIVATED_FLAG = 'savvy_account_deactivated'
+
+export const DEACTIVATED_MESSAGE = 'Your account has been deactivated. Please contact your administrator.'
+
+export async function endDeactivatedSession() {
+  try { sessionStorage.setItem(DEACTIVATED_FLAG, '1') } catch { /* private mode etc. */ }
+  await supabase.auth.signOut()
+}
+
+// Asks the server whether the current login may still be used.
+//   'ok'       - signed in and the profile is active
+//   'inactive' - the profile has been deactivated
+//   'revoked'  - the server no longer accepts this session (banned or its
+//                session was revoked when the person was deactivated)
+//   'unknown'  - couldn't tell (offline, server hiccup): do nothing
+export async function checkAccess() {
+  const { data: { user }, error } = await supabase.auth.getUser()
+  if (error) return (error.status === 401 || error.status === 403) ? 'revoked' : 'unknown'
+  if (!user) return 'unknown'
+
+  const { data, error: profileError } = await supabase
+    .from('profiles')
+    .select('is_active')
+    .eq('auth_user_id', user.id)
+    .maybeSingle()
+  if (profileError || !data) return 'unknown'
+  return data.is_active === false ? 'inactive' : 'ok'
+}
+
 // Returns the profile row for the currently logged-in user, or null.
 export async function getCurrentProfile() {
   const { data: { user } } = await supabase.auth.getUser()

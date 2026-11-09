@@ -1,22 +1,37 @@
 import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { logLoginEvent } from '../services/authService'
+import { logLoginEvent, DEACTIVATED_FLAG, DEACTIVATED_MESSAGE } from '../services/authService'
 
 export default function Login() {
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState('')
+  // If we were just signed out because the account was deactivated, say so.
+  const [error,    setError]    = useState(() => {
+    try {
+      if (sessionStorage.getItem(DEACTIVATED_FLAG)) {
+        sessionStorage.removeItem(DEACTIVATED_FLAG)
+        return DEACTIVATED_MESSAGE
+      }
+    } catch { /* storage unavailable */ }
+    return ''
+  })
 
   async function handleLogin(e) {
     e.preventDefault?.()
     setLoading(true)
     setError('')
     const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setError(error.message)
-    else logLoginEvent().catch(() => {})
+    if (error) {
+      // A deactivated login is banned server-side; Supabase's own wording
+      // ("User is banned") means nothing to the person looking at it.
+      const banned = error.code === 'user_banned' || /banned/i.test(error.message || '')
+      setError(banned ? DEACTIVATED_MESSAGE : error.message)
+    } else {
+      logLoginEvent().catch(() => {})
+    }
     setLoading(false)
   }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
-import { fetchProfile, updateProfile, deleteProfile, callChangePassword, fetchPendingPasswordRequest, denyPasswordRequest } from '../services/profileService'
+import { fetchProfile, updateProfile, callChangePassword, fetchPendingPasswordRequest, denyPasswordRequest } from '../services/profileService'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
 
 const ROLES  = ['technician', 'admin', 'viewer']
@@ -31,13 +31,13 @@ function Field({ label, children }) {
 export default function UserDetailPage() {
   const { id }   = useParams()
   const navigate = useNavigate()
-  const { isAdmin } = useCurrentUser()
+  const { isAdmin, profile: me } = useCurrentUser()
 
   const [editing,       setEditing]       = useState(false)
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
-  const [deleting,      setDeleting]      = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [togglingActive, setTogglingActive] = useState(false)
+  const [confirmStatus,  setConfirmStatus]  = useState(false)
   const [error,         setError]         = useState(null)
   const [form,          setForm]          = useState(null)
 
@@ -118,15 +118,21 @@ export default function UserDetailPage() {
     }
   }
 
-  async function handleDelete() {
-    setDeleting(true)
+  // Users are never deleted from here: removing a profile also wipes their
+  // clock-ins, notifications and document history. Deactivating keeps every
+  // record and just moves them to Inactive Users; Reactivate undoes it.
+  async function handleToggleActive() {
+    const next = !form.is_active
+    setTogglingActive(true)
+    setError(null)
     try {
-      await deleteProfile(id)
-      navigate('/users/active')
+      await updateProfile(id, { is_active: next })
+      setForm(prev => ({ ...prev, is_active: next }))
     } catch (err) {
-      setError(err.message || 'Failed to delete user')
-      setDeleting(false)
-      setConfirmDelete(false)
+      setError(err.message || `Failed to ${next ? 'reactivate' : 'deactivate'} user`)
+    } finally {
+      setTogglingActive(false)
+      setConfirmStatus(false)
     }
   }
 
@@ -187,10 +193,19 @@ export default function UserDetailPage() {
               🔒 Change Password
             </button>
           )}
-          <button type="button" onClick={() => setConfirmDelete(true)}
-            className="bg-red-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-red-700 transition-colors">
-            🗑 Delete
-          </button>
+          {isAdmin && me?.id !== id && (
+            form.is_active ? (
+              <button type="button" onClick={() => setConfirmStatus(true)}
+                className="bg-amber-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-amber-700 transition-colors">
+                ⏸ Deactivate
+              </button>
+            ) : (
+              <button type="button" onClick={() => setConfirmStatus(true)}
+                className="bg-emerald-600 text-white px-4 py-2 rounded text-sm font-semibold hover:bg-emerald-700 transition-colors">
+                ▶ Reactivate
+              </button>
+            )
+          )}
         </div>
       </div>
 
@@ -281,20 +296,24 @@ export default function UserDetailPage() {
         </div>
       </form>
 
-      {/* Delete confirmation */}
-      {confirmDelete && (
+      {/* Deactivate / reactivate confirmation */}
+      {confirmStatus && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h3 className="text-base font-bold text-gray-900">Delete User?</h3>
+            <h3 className="text-base font-bold text-gray-900">
+              {form.is_active ? 'Deactivate User?' : 'Reactivate User?'}
+            </h3>
             <p className="text-sm text-gray-600">
-              This will permanently delete <span className="font-semibold">{form.full_name}</span> and cannot be undone.
+              {form.is_active
+                ? <><span className="font-semibold">{form.full_name}</span> will move to Inactive Users. Nothing is deleted — their clock-ins, jobs, documents and history are all kept, and you can reactivate them at any time.</>
+                : <><span className="font-semibold">{form.full_name}</span> will move back to Active Users.</>}
             </p>
             <div className="flex gap-3 pt-1">
-              <button type="button" onClick={handleDelete} disabled={deleting}
-                className="flex-1 bg-red-600 text-white py-2 rounded text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors">
-                {deleting ? 'Deleting…' : 'Yes, Delete'}
+              <button type="button" onClick={handleToggleActive} disabled={togglingActive}
+                className={`flex-1 text-white py-2 rounded text-sm font-semibold disabled:opacity-50 transition-colors ${form.is_active ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                {togglingActive ? 'Saving…' : form.is_active ? 'Yes, Deactivate' : 'Yes, Reactivate'}
               </button>
-              <button type="button" onClick={() => setConfirmDelete(false)}
+              <button type="button" onClick={() => setConfirmStatus(false)}
                 className="flex-1 border border-gray-300 text-gray-600 py-2 rounded text-sm font-medium hover:bg-gray-50 transition-colors">
                 Cancel
               </button>

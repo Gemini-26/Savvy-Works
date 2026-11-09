@@ -86,8 +86,15 @@ Deno.serve(async (req) => {
 
     const newUserId = authData.user.id
 
-    // Step 2: create the profile row directly (no trigger needed), inheriting the caller's company_id
-    const { error: profileError } = await adminClient
+    // Step 2: create the profile row directly (no trigger needed), inheriting the caller's company_id.
+    // This client tells the database which admin is acting, so the profile audit
+    // log can say who created the profile (the service key alone has no person
+    // attached). The database only trusts this header on service-key requests.
+    const actingClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { headers: { 'x-acting-user-id': caller.id } },
+    })
+    const { error: profileError } = await actingClient
       .from('profiles')
       .insert({
         auth_user_id: newUserId,
