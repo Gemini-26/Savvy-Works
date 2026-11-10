@@ -1,6 +1,7 @@
 import { supabase } from '../../lib/supabase'
 import { getCurrentFix } from '../utils/geo'
 import { jobSiteFields } from '../utils/jobSite'
+import { ADDED_NOTE, isAddedByAdmin } from '../utils/teamShiftText'
 
 // A team member (labourer/helper) has no login, so a technician clocks them
 // in and out from their own phone. The database owns the times — see the
@@ -234,7 +235,12 @@ export async function adjustTeamShiftTimes(shiftId, { clock_in, clock_out }, rea
 
   const updates = { clock_in, clock_out: clock_out || null }
   if (!clock_out) updates.clocked_out_by = null
-  if (reason.trim()) updates.note = reason.trim()
+  if (reason.trim()) {
+    // Keep the "Added by an admin" marker on a clock-in an admin typed in.
+    const { data: current } = await supabase
+      .from('team_member_shifts').select('note').eq('id', shiftId).maybeSingle()
+    updates.note = isAddedByAdmin(current) ? `${ADDED_NOTE} · ${reason.trim()}` : reason.trim()
+  }
 
   const { data, error } = await supabase
     .from('team_member_shifts')
@@ -246,6 +252,60 @@ export async function adjustTeamShiftTimes(shiftId, { clock_in, clock_out }, rea
     throw error
   }
   if (!data?.length) throw new Error('Update failed — no rows were changed. Check your permissions.')
+  notifyTeamShiftChanged()
+}
+
+// Admin adds a clock-in nobody tapped (the technician forgot to clock them
+// in). The database lets an admin insert any times; for everyone else it
+// forces "now". The row is marked "Added by an admin" in its note, and
+// `clockedOutBy` (the admin's profile id) stamps who closed it.
+// Refuses times that overlap one of their existing clock-ins, so the same
+// hours can't be counted twice when the technician did clock them in too.
+export async function addTeamShift(
+  teamMemberId,
+  { clock_in, clock_out, job = null, mode = 'with_technician', clockedOutBy = null },
+  reason = '',
+) {
+  if (!clock_in) throw new Error('Clock-in time is required')
+  if (clock_out && new Date(clock_out) <= new Date(clock_in)) throw new Error('Clock-out must be after clock-in')
+  const limit = Date.now() + 60_000
+  if (new Date(clock_in) > limit || (clock_out && new Date(clock_out) > limit)) {
+    throw new Error("Times can't be in the future")
+  }
+  const site = jobSiteFields(job)
+  if (!site.job_id && !site.site_label) throw new Error('Pick or type the job number they worked on')
+
+  // Any existing clock-in that runs into the new window (open ones run on forever).
+  let overlap = supabase
+    .from('team_member_shifts')
+    .select('clock_in, clock_out')
+    .eq('team_member_id', teamMemberId)
+    .or(`clock_out.is.null,clock_out.gt.${clock_in}`)
+    .limit(1)
+  if (clock_out) overlap = overlap.lt('clock_in', clock_out)
+  const { data: clash, error: clashError } = await overlap
+  if (clashError && !isMissingTable(clashError)) throw clashError
+  if (clash?.length) {
+    const fmt = iso => new Date(iso).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' })
+    const c = clash[0]
+    throw new Error(`They already have a clock-in (${fmt(c.clock_in)} – ${c.clock_out ? fmt(c.clock_out) : 'still clocked in'}) that overlaps these times. Edit that one instead.`)
+  }
+
+  const row = {
+    team_member_id: teamMemberId,
+    clock_in,
+    clock_out: clock_out || null,
+    mode,
+    ...site,
+    note: reason.trim() ? `${ADDED_NOTE} · ${reason.trim()}` : ADDED_NOTE,
+  }
+  if (clock_out && clockedOutBy) row.clocked_out_by = clockedOutBy
+
+  const { error } = await supabase.from('team_member_shifts').insert([row])
+  if (error) {
+    if (error.code === '23505') throw new Error('They are already clocked in — close that clock-in first')
+    throw error
+  }
   notifyTeamShiftChanged()
 }
 

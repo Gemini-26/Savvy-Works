@@ -1,10 +1,15 @@
+import { isAddedByAdmin } from '../utils/teamShiftText'
+
 const clockTime = iso => new Date(iso).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
 
 // "Adjusted by an admin · originally in 07:45 · reason" under a team member's
 // (or casual's) clock-in an admin corrected. The database keeps the first
 // values in original_clock_in / original_clock_out; the reason is the note.
+// One an admin typed in afterwards reads "Added by an admin · reason" instead.
 export default function TeamShiftAdjustedNote({ shift }) {
-  if (!shift.original_clock_in && !shift.original_clock_out) return null
+  if (!shift.original_clock_in && !shift.original_clock_out) {
+    return isAddedByAdmin(shift) ? <p className="text-xs text-amber-600">{shift.note}</p> : null
+  }
   return (
     <p className="text-xs text-amber-600">
       Adjusted by an admin

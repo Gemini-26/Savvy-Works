@@ -31,6 +31,11 @@ export default function ClockTimesModal({
   originalStart,
   originalEnd,
   note,
+  // Adding a clock-in from nothing: no start yet, so one is required to save.
+  requireStart = false,
+  submitLabel = 'Save times',
+  // Extra fields (e.g. a job picker), shown under the times.
+  children,
   onSubmit,
   onClose,
 }) {
@@ -61,8 +66,8 @@ export default function ClockTimesModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <form onSubmit={handleSave} onClick={e => e.stopPropagation()}
-        className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+        className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[92vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <div>
             <h2 className="font-semibold text-gray-900">{title}</h2>
             {personName && <p className="text-xs text-gray-500 mt-0.5">{personName}</p>}
@@ -72,7 +77,7 @@ export default function ClockTimesModal({
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-4">
+        <div className="px-5 py-4 space-y-4 overflow-y-auto">
           <div>
             <label className="block text-xs font-semibold text-gray-600 mb-1">{startLabel}</label>
             <input type="datetime-local" value={start} max={maxValue} onChange={e => setStart(e.target.value)} className={inputCls} />
@@ -99,6 +104,8 @@ export default function ClockTimesModal({
             </p>
           )}
 
+          {children}
+
           {note && <p className="text-xs text-gray-500 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">{note}</p>}
 
           <div>
@@ -109,11 +116,11 @@ export default function ClockTimesModal({
           {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{error}</div>}
         </div>
 
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-gray-100 shrink-0">
           <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 rounded-lg">Cancel</button>
-          <button type="submit" disabled={saving || (!start && !!end)}
+          <button type="submit" disabled={saving || (!start && (!!end || requireStart))}
             className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-50">
-            {saving ? 'Saving…' : 'Save times'}
+            {saving ? 'Saving…' : submitLabel}
           </button>
         </div>
       </form>

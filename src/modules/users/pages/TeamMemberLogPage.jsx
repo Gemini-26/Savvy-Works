@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { Users, Phone, Clock, MapPin } from 'lucide-react'
+import { Users, Phone, Clock, MapPin, Plus } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import OnSiteHoursSummary from '../../../shared/components/OnSiteHoursSummary'
 import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import { fetchTeamMember, fetchTeamMemberOnSiteSessions } from '../services/teamMembersService'
 import ClockTimesModal from '../../../shared/components/ClockTimesModal'
+import AddTeamShiftModal from '../../../shared/components/AddTeamShiftModal'
 import TeamShiftAdjustedNote from '../../../shared/components/TeamShiftAdjustedNote'
 import { fetchTeamMemberShifts, adjustTeamShiftTimes, onTeamShiftChange } from '../../../shared/services/teamShiftService'
 import { teamPlace } from '../../../shared/utils/teamShiftText'
@@ -33,6 +34,7 @@ export default function TeamMemberLogPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(null)
+  const [adding, setAdding] = useState(false)
 
   useEffect(() => {
     Promise.all([fetchTeamMember(id), fetchTeamMemberOnSiteSessions(id), fetchTeamMemberShifts(id)])
@@ -92,8 +94,16 @@ export default function TeamMemberLogPage() {
       )}
 
       <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-2xl mb-4">
-        <div className="flex items-center gap-2 text-sm font-bold text-gray-900 mb-1">
-          <Clock size={16} /> Clock-ins ({clockIns.length})
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+            <Clock size={16} /> Clock-ins ({clockIns.length})
+          </div>
+          {isAdmin && (
+            <button type="button" onClick={() => setAdding(true)}
+              className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+              <Plus size={14} /> Add times
+            </button>
+          )}
         </div>
         <p className="text-[11px] text-gray-400 mb-3">
           Clocked in and out by a technician from the clock button — either with them, or when dropping them off at a site.
@@ -151,6 +161,8 @@ export default function TeamMemberLogPage() {
           emptyLabel="This team member hasn't been logged on site yet."
         />
       </div>
+
+      {adding && <AddTeamShiftModal member={member} onClose={() => setAdding(false)} />}
 
       {editing && (
         <ClockTimesModal
