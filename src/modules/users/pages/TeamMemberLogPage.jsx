@@ -7,6 +7,7 @@ import OnSiteSessionsList from '../../../shared/components/OnSiteSessionsList'
 import { fetchTeamMember, fetchTeamMemberOnSiteSessions } from '../services/teamMembersService'
 import ClockTimesModal from '../../../shared/components/ClockTimesModal'
 import AddTeamShiftModal from '../../../shared/components/AddTeamShiftModal'
+import AddOnSiteSessionsModal from '../../../shared/components/AddOnSiteSessionsModal'
 import TeamShiftAdjustedNote from '../../../shared/components/TeamShiftAdjustedNote'
 import { fetchTeamMemberShifts, adjustTeamShiftTimes, onTeamShiftChange } from '../../../shared/services/teamShiftService'
 import { teamPlace } from '../../../shared/utils/teamShiftText'
@@ -35,6 +36,7 @@ export default function TeamMemberLogPage() {
   const [error, setError] = useState(null)
   const [editing, setEditing] = useState(null)
   const [adding, setAdding] = useState(false)
+  const [addingSessions, setAddingSessions] = useState(false)
 
   useEffect(() => {
     Promise.all([fetchTeamMember(id), fetchTeamMemberOnSiteSessions(id), fetchTeamMemberShifts(id)])
@@ -151,8 +153,16 @@ export default function TeamMemberLogPage() {
       </div>
 
       <div className="bg-white border border-gray-200 rounded-xl p-6 max-w-2xl">
-        <div className="flex items-center gap-2 text-sm font-bold text-gray-900 mb-4">
-          <MapPin size={16} /> On-Site Sessions ({sessions.length})
+        <div className="flex items-center justify-between gap-2 mb-4">
+          <div className="flex items-center gap-2 text-sm font-bold text-gray-900">
+            <MapPin size={16} /> On-Site Sessions ({sessions.length})
+          </div>
+          {isAdmin && (
+            <button type="button" onClick={() => setAddingSessions(true)}
+              className="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-700">
+              <Plus size={14} /> Add on-site hours
+            </button>
+          )}
         </div>
         <OnSiteSessionsList
           sessions={sessions}
@@ -163,6 +173,15 @@ export default function TeamMemberLogPage() {
       </div>
 
       {adding && <AddTeamShiftModal member={member} onClose={() => setAdding(false)} />}
+
+      {addingSessions && (
+        <AddOnSiteSessionsModal
+          member={member}
+          mySessions={sessions}
+          onSaved={async () => setSessions(await fetchTeamMemberOnSiteSessions(id))}
+          onClose={() => setAddingSessions(false)}
+        />
+      )}
 
       {editing && (
         <ClockTimesModal

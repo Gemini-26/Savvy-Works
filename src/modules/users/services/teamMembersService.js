@@ -1,5 +1,6 @@
 import { supabase } from '../../../lib/supabase'
 import { getCurrentProfile } from '../../../services/authService'
+import { logActivity } from '../../../shared/services/activityService'
 
 // Team members are labourers/helpers a technician can bring on site.
 // They have no login of their own and aren't fixed to a single
@@ -127,6 +128,68 @@ export async function setAssignmentTeamMembers(assignmentId, teamMemberIds) {
     .from('assignment_team_members')
     .insert(teamMemberIds.map(team_member_id => ({ assignment_id: assignmentId, team_member_id })))
   if (error) throw error
+}
+
+// Technicians' on-site sessions (clock-ins with a start time) from the last
+// `days` days, newest first, with the team members already on each. This is
+// the pool an admin picks from to give a helper on-site hours the technician
+// never logged them onto.
+export async function fetchRecentOnSiteAssignments(days = 14, limit = 300) {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString()
+  const { data, error } = await supabase
+    .from('appointment_assignments')
+    .select(`
+      id, actual_start, actual_end,
+      profiles(id, full_name),
+      appointments(job_id, jobs(id, job_ref, title, site_address, site_city, customers(customer_name))),
+      assignment_team_members(team_member_id)
+    `)
+    .not('actual_start', 'is', null)
+    .gte('actual_start', since)
+    .order('actual_start', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+
+  return (data || []).map(a => {
+    const job = a.appointments?.jobs
+    return {
+      id: a.id,
+      actual_start: a.actual_start,
+      actual_end: a.actual_end,
+      technician_name: a.profiles?.full_name || 'Unknown',
+      job_id: a.appointments?.job_id ?? null,
+      job_ref: job?.job_ref ?? null,
+      job_title: job?.title ?? null,
+      customer_name: job?.customers?.customer_name ?? null,
+      site: [job?.site_address, job?.site_city].filter(Boolean).join(', '),
+      team_member_ids: (a.assignment_team_members || []).map(t => t.team_member_id),
+    }
+  })
+}
+
+// Admin puts a team member on technicians' on-site sessions (the technician
+// forgot to log them on), so they are credited the technician's window for
+// each one. Already-linked sessions are left alone. Each job's activity log
+// records who added them, as the rows themselves don't.
+export async function addTeamMemberToAssignments(member, assignments) {
+  if (!assignments.length) return
+  const { error } = await supabase
+    .from('assignment_team_members')
+    .upsert(
+      assignments.map(a => ({ assignment_id: a.id, team_member_id: member.id })),
+      { onConflict: 'assignment_id,team_member_id', ignoreDuplicates: true },
+    )
+  if (error) throw error
+
+  const clock = iso => new Date(iso).toLocaleTimeString('en-ZA', { hour: '2-digit', minute: '2-digit' })
+  const day = iso => new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' })
+  await Promise.all(assignments.filter(a => a.job_id).map(a =>
+    logActivity(
+      a.job_id,
+      'team_member_added_to_session',
+      `${member.full_name} added to ${a.technician_name}'s on-site time (${day(a.actual_start)}, ${clock(a.actual_start)} – ${a.actual_end ? clock(a.actual_end) : 'on site'})`,
+    ).catch(() => {}),
+  ))
 }
 
 // Every on-site session this team member was logged onto, newest first.
