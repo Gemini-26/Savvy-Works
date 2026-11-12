@@ -10,8 +10,10 @@ import { supabase } from '../../lib/supabase'
 export async function fetchOnSiteSessions(technicianId, limit = 200) {
   const { data, error } = await supabase
     .from('appointment_assignments')
+    // `*` rather than a column list so auto_clocked_out comes along once its
+    // migration has run — and the screen still loads if this code is ever live first.
     .select(`
-      id, actual_start, actual_end,
+      *,
       appointments(id, job_id, jobs(job_ref, title, site_address, site_city)),
       assignment_team_members(team_members(id, full_name, role_title))
     `)
@@ -25,6 +27,7 @@ export async function fetchOnSiteSessions(technicianId, limit = 200) {
     id: row.id,
     actual_start: row.actual_start,
     actual_end: row.actual_end,
+    auto_clocked_out: !!row.auto_clocked_out,
     // Both ids travel with the session: admin screens open a job by job_id,
     // the technician portal opens the same work by appointment id.
     appointment_id: row.appointments?.id,

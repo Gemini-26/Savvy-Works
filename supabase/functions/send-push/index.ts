@@ -17,6 +17,19 @@ const vapidSubject    = Deno.env.get('VAPID_SUBJECT') ?? 'mailto:sales@savvyplum
 // without it the Android app is skipped and browsers still get their alerts.
 const fcmServiceAccountRaw = Deno.env.get('FCM_SERVICE_ACCOUNT') ?? ''
 
+// Shared secret the database sends (x-cron-secret) when IT asks for a push —
+// the automatic 17:00 clock-out has no signed-in person to authenticate as.
+// Also stored in the vault as send_push_secret; scripts/setup-clock-out-push.mjs
+// sets both. Unset = the database path is closed and only signed-in callers work.
+const cronSecret = Deno.env.get('CRON_SECRET') ?? ''
+
+function sameSecret(a: string, b: string) {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
 const adminClient = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },
 })
@@ -83,13 +96,20 @@ async function fcmAccessToken(account: ServiceAccount) {
   return access_token as string
 }
 
-type PushJob = { id: string; user_id: string; title: string; body: string | null; link: string | null }
+type PushJob = {
+  id: string; user_id: string; title: string; body: string | null; link: string | null; urgent: boolean | null
+}
 
 // 'dead' = Google says that phone's token will never work again (app
 // uninstalled or data cleared), so the caller deletes it.
 async function sendFcm(
   account: ServiceAccount, accessToken: string, token: string, n: PushJob,
 ): Promise<'sent' | 'dead' | 'failed'> {
+  // An urgent alert (e.g. "You have been clocked out") rides the app's loudest
+  // channel — maximum importance, so it sounds and pops over whatever is on
+  // screen — and is dropped if the phone only comes back online much later,
+  // when "you have been clocked out" would just be confusing.
+  const urgent = !!n.urgent
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${account.project_id}/messages:send`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
@@ -97,11 +117,17 @@ async function sendFcm(
       message: {
         token,
         notification: { title: n.title, body: n.body ?? '' },
-        data: { link: n.link ?? '/', tag: `n-${n.id}` },
+        data: { link: n.link ?? '/', tag: `n-${n.id}`, ...(urgent ? { urgent: '1' } : {}) },
         android: {
           priority: 'HIGH',
-          // The app creates this channel (high importance, sound, vibration).
-          notification: { channel_id: 'alerts', sound: 'default', tag: `n-${n.id}` },
+          ...(urgent ? { ttl: '1800s' } : {}),
+          // The app creates these channels (sound + vibration; see nativePushService).
+          notification: {
+            channel_id: urgent ? 'clock_out' : 'alerts',
+            sound: 'default',
+            tag: `n-${n.id}`,
+            ...(urgent ? { notification_priority: 'PRIORITY_MAX', visibility: 'PUBLIC', default_vibrate_timings: true } : {}),
+          },
         },
       },
     }),
@@ -130,20 +156,32 @@ Deno.serve(async (req) => {
     }
     webpush.setVapidDetails(vapidSubject, vapidPublicKey, vapidPrivateKey)
 
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader) return json({ error: 'Unauthorized' }, 401)
+    // Two ways in: the database (shared secret — the 17:00 auto clock-out) or a
+    // signed-in person (their own company's notifications only).
+    const secretHeader = req.headers.get('x-cron-secret')
+    let companyId: string | null = null
+    let fromDatabase = false
 
-    const { data: { user: caller }, error: callerError } = await adminClient.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    )
-    if (callerError || !caller) return json({ error: 'Unauthorized' }, 401)
+    if (secretHeader !== null) {
+      if (!cronSecret || !sameSecret(secretHeader, cronSecret)) return json({ error: 'Unauthorized' }, 401)
+      fromDatabase = true
+    } else {
+      const authHeader = req.headers.get('Authorization')
+      if (!authHeader) return json({ error: 'Unauthorized' }, 401)
 
-    const { data: callerProfile } = await adminClient
-      .from('profiles')
-      .select('id, company_id')
-      .eq('auth_user_id', caller.id)
-      .maybeSingle()
-    if (!callerProfile?.company_id) return json({ error: 'Your account is not linked to a company.' }, 403)
+      const { data: { user: caller }, error: callerError } = await adminClient.auth.getUser(
+        authHeader.replace('Bearer ', '')
+      )
+      if (callerError || !caller) return json({ error: 'Unauthorized' }, 401)
+
+      const { data: callerProfile } = await adminClient
+        .from('profiles')
+        .select('id, company_id')
+        .eq('auth_user_id', caller.id)
+        .maybeSingle()
+      if (!callerProfile?.company_id) return json({ error: 'Your account is not linked to a company.' }, 403)
+      companyId = callerProfile.company_id
+    }
 
     const { notification_ids } = await req.json()
     if (!Array.isArray(notification_ids) || notification_ids.length === 0) {
@@ -152,17 +190,20 @@ Deno.serve(async (req) => {
     const ids = notification_ids.slice(0, 50)
 
     // Claim the rows by stamping them: a notification is pushed once however
-    // often it is asked for, and only ones in the caller's own company count.
-    // Rows older than a couple of minutes are ignored so an old id can't be
-    // replayed.
-    const { data: claimed, error: claimError } = await adminClient
+    // often it is asked for. A signed-in caller only reaches their own company's
+    // rows. Old rows are ignored so an id can't be replayed: two minutes for a
+    // person's request, fifteen for the database's (its request is queued and
+    // can arrive a little late).
+    const freshFor = (fromDatabase ? 15 : 2) * 60 * 1000
+    let claimQuery = adminClient
       .from('notifications')
       .update({ pushed_at: new Date().toISOString() })
       .in('id', ids)
-      .eq('company_id', callerProfile.company_id)
       .is('pushed_at', null)
-      .gte('created_at', new Date(Date.now() - 2 * 60 * 1000).toISOString())
-      .select('id, user_id, title, body, link')
+      .gte('created_at', new Date(Date.now() - freshFor).toISOString())
+    if (companyId) claimQuery = claimQuery.eq('company_id', companyId)
+    const { data: claimed, error: claimError } = await claimQuery
+      .select('id, user_id, title, body, link, urgent')
     if (claimError) return json({ error: claimError.message }, 500)
     if (!claimed || claimed.length === 0) return json({ ok: true, sent: 0 })
 
@@ -203,14 +244,16 @@ Deno.serve(async (req) => {
 
     for (const n of claimed) {
       const payload = JSON.stringify({
-        title: n.title, body: n.body ?? '', link: n.link ?? '/', tag: `n-${n.id}`,
+        title: n.title, body: n.body ?? '', link: n.link ?? '/', tag: `n-${n.id}`, urgent: !!n.urgent,
       })
       await Promise.all((subs ?? []).filter(s => s.user_id === n.user_id).map(async (s) => {
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
             payload,
-            { TTL: 60 * 60, urgency: 'high' },
+            // An urgent alert that is stale by the time the browser is back online
+            // (half an hour) is dropped rather than shown late.
+            { TTL: n.urgent ? 30 * 60 : 60 * 60, urgency: 'high' },
           )
           sent++
         } catch (err) {

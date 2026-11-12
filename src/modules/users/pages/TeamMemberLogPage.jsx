@@ -124,6 +124,7 @@ export default function TeamMemberLogPage() {
                     {teamPlace(c)}
                     {c.clocked_in_by_profile?.full_name ? ` · In by ${c.clocked_in_by_profile.full_name}` : ''}
                     {c.clock_out && c.clocked_out_by_profile?.full_name ? ` · Out by ${c.clocked_out_by_profile.full_name}` : ''}
+                    {c.clock_out && c.auto_clocked_out ? ' · Out automatically' : ''}
                   </p>
                   <TeamShiftAdjustedNote shift={c} />
                 </div>

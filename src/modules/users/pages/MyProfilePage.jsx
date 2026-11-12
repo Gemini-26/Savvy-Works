@@ -216,6 +216,7 @@ export default function MyProfilePage({ profile }) {
                       {s.clocked_out_by && s.clocked_out_by !== profile.id && (
                         <span className="text-amber-600"> (clocked out by {s.clocked_out_by_profile?.full_name || 'admin'})</span>
                       )}
+                      {s.auto_clocked_out && <span className="text-amber-600"> (clocked out automatically)</span>}
                     </p>
                   ))}
                 </div>

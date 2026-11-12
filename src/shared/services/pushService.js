@@ -109,7 +109,7 @@ export async function enableAlerts() {
 // service worker shows it when there is one (the only way on phones); the tag
 // is the notification's id, so the copy the server pushes replaces this one
 // instead of stacking beside it.
-export async function showSystemNotification({ id, title, body, link }, onClick) {
+export async function showSystemNotification({ id, title, body, link, urgent }, onClick) {
   if (notificationPermission() !== 'granted') return
   const options = {
     body: body || '',
@@ -117,6 +117,9 @@ export async function showSystemNotification({ id, title, body, link }, onClick)
     icon: '/pwa-192x192.png',
     badge: '/pwa-64x64.png',
     data: { link },
+    // Urgent: stays on screen until tapped, buzzes for longer, and makes the
+    // phone sound again even if a pop-up with this tag is already showing.
+    ...(urgent ? { requireInteraction: true, renotify: true, vibrate: [800, 200, 800, 200, 800] } : {}),
   }
   const reg = await readyRegistration()
   if (reg) { await reg.showNotification(title, options); return }

@@ -11,7 +11,9 @@ export function onWorkShiftChange(handler) {
   return () => window.removeEventListener(WORKSHIFT_CHANGED, handler)
 }
 
-function notifyWorkShiftChanged() {
+// Exported for the notification bell: the automatic 17:00 clock-out happens in
+// the database, so the screen only learns of it from the alert that comes with it.
+export function notifyWorkShiftChanged() {
   window.dispatchEvent(new Event(WORKSHIFT_CHANGED))
 }
 

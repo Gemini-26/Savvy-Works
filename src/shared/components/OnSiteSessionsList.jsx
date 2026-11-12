@@ -66,6 +66,9 @@ export default function OnSiteSessionsList({ sessions, renderWith, onOpenJob, em
                         {formatHoursDuration(new Date(s.actual_end) - new Date(s.actual_start))}
                       </span>
                     )}
+                    {s.actual_end && s.auto_clocked_out && (
+                      <span className="block text-amber-600">out automatically</span>
+                    )}
                   </p>
                 </div>
               )

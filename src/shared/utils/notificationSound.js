@@ -59,6 +59,53 @@ function chime() {
   tone(1318.5, now + 1.08, 0.45)
 }
 
+const ALARM_SECONDS = 8
+let alarm = null
+
+// The siren for an urgent alert ("You have been clocked out"): a harsh two-tone
+// wail at near full volume for a few seconds, plus a long buzz on phones. It
+// deliberately ignores the chime's on/off switch — the point is that nobody
+// misses it — and keeps going until stopAlarmSound() or the time runs out.
+export function playAlarmSound() {
+  try { navigator.vibrate?.([800, 200, 800, 200, 800, 200, 800, 200, 800]) } catch { /* not supported */ }
+  if (!ctx) return
+  const start = () => {
+    stopAlarmSound()
+    const now = ctx.currentTime
+    const master = ctx.createGain()
+    master.gain.setValueAtTime(0.0001, now)
+    master.gain.linearRampToValueAtTime(0.85, now + 0.05)
+    master.gain.setValueAtTime(0.85, now + ALARM_SECONDS - 0.3)
+    master.gain.linearRampToValueAtTime(0.0001, now + ALARM_SECONDS)
+    master.connect(ctx.destination)
+
+    const osc = ctx.createOscillator()
+    osc.type = 'square'
+    for (let t = 0; t < ALARM_SECONDS; t += 0.4) {
+      osc.frequency.setValueAtTime(Math.round(t / 0.4) % 2 === 0 ? 988 : 740, now + t)
+    }
+    osc.connect(master)
+    osc.start(now)
+    osc.stop(now + ALARM_SECONDS + 0.05)
+    alarm = { osc, master }
+  }
+  if (ctx.state === 'running') start()
+  else ctx.resume().then(start).catch(() => {})
+}
+
+export function stopAlarmSound() {
+  if (!alarm) return
+  const { osc, master } = alarm
+  alarm = null
+  try {
+    master.gain.cancelScheduledValues(ctx.currentTime)
+    master.gain.setValueAtTime(master.gain.value, ctx.currentTime)
+    master.gain.linearRampToValueAtTime(0.0001, ctx.currentTime + 0.05)
+    osc.stop(ctx.currentTime + 0.08)
+  } catch { /* already finished */ }
+  try { navigator.vibrate?.(0) } catch { /* not supported */ }
+}
+
 // `force` plays even when the person has switched the sound off — used by the
 // toggle itself so they hear what they are turning on.
 export function playNotificationSound({ force = false } = {}) {

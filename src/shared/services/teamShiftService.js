@@ -22,7 +22,8 @@ export function onTeamShiftChange(handler) {
   return () => window.removeEventListener(TEAMSHIFT_CHANGED, handler)
 }
 
-function notifyTeamShiftChanged() {
+// Exported for the notification bell — see notifyWorkShiftChanged.
+export function notifyTeamShiftChanged() {
   window.dispatchEvent(new Event(TEAMSHIFT_CHANGED))
 }
 

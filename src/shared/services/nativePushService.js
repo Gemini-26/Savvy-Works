@@ -9,6 +9,11 @@ import { PushNotifications } from '@capacitor/push-notifications'
 import { supabase } from '../../lib/supabase'
 
 const CHANNEL_ID = 'alerts'
+// Urgent alerts (the automatic 17:00 clock-out) use their own channel so the
+// phone treats them as the most important kind it knows: maximum importance
+// means the sound plays and the card drops down over whatever is on screen.
+// send-push names this channel for urgent notifications.
+const URGENT_CHANNEL_ID = 'clock_out'
 const TOKEN_KEY = 'savvy-device-token'
 const REGISTER_TIMEOUT_MS = 15000
 
@@ -95,6 +100,15 @@ export async function setUpNativePush(onOpen) {
       name: 'Job alerts',
       description: 'New jobs, job updates and other things that need you',
       importance: 4,
+      visibility: 1,
+      vibration: true,
+      lights: true,
+    })
+    await PushNotifications.createChannel({
+      id: URGENT_CHANNEL_ID,
+      name: 'Clock-out alarm',
+      description: 'The loud alert when you are clocked out automatically at 17:00',
+      importance: 5,
       visibility: 1,
       vibration: true,
       lights: true,

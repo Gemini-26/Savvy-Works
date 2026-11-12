@@ -1,18 +1,45 @@
 import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
-import { Bell, X } from 'lucide-react'
+import { Bell, Clock, X } from 'lucide-react'
 
 const AUTO_DISMISS_MS = 9000
 // A "couldn't set that up" notice carries instructions, so it stays longer.
 const NOTICE_DISMISS_MS = 20000
 
 function Toast({ toast, onOpen, onDismiss }) {
-  // The turn-on prompt waits for an answer; a notification fades away on its own.
+  // The turn-on prompt and an urgent alert wait for an answer; a notification
+  // fades away on its own.
   useEffect(() => {
-    if (toast.kind === 'prompt') return
+    if (toast.kind === 'prompt' || toast.kind === 'alarm') return
     const timer = setTimeout(() => onDismiss(toast.id), toast.kind === 'notice' ? NOTICE_DISMISS_MS : AUTO_DISMISS_MS)
     return () => clearTimeout(timer)
   }, [toast.id, toast.kind, onDismiss])
+
+  // Urgent (e.g. "You have been clocked out"): big, red, and it stays put until
+  // the person taps OK — which also stops the siren.
+  if (toast.kind === 'alarm') {
+    return (
+      <div
+        role="alert"
+        aria-live="assertive"
+        className="pointer-events-auto flex items-start gap-3 bg-red-600 text-white rounded-xl shadow-2xl ring-4 ring-red-300 px-4 py-3.5"
+      >
+        <div className="mt-0.5 w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0 animate-pulse">
+          <Clock size={20} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-base font-bold leading-tight">{toast.title}</p>
+          {toast.body && <p className="text-sm text-red-50 mt-1">{toast.body}</p>}
+          <button
+            onClick={() => onDismiss(toast.id)}
+            className="mt-2.5 px-4 py-1.5 rounded-md bg-white text-red-700 text-sm font-bold hover:bg-red-50"
+          >
+            OK
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div

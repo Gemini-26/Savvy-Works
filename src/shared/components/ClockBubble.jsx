@@ -68,6 +68,20 @@ export default function ClockBubble() {
     return onTeamShiftChange(refresh)
   }, [profile?.id])
 
+  // The database can close a clock behind the app's back (the automatic 17:00
+  // clock-out, an admin closing a shift) and a phone that was asleep misses the
+  // live signal — so look again whenever the app comes back to the front.
+  useEffect(() => {
+    if (!profile?.id) return
+    function onVisible() {
+      if (document.hidden) return
+      fetchActiveShift(profile.id).then(setShift).catch(() => {})
+      fetchOpenTeamShifts().then(setOpenTeamShifts).catch(() => {})
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [profile?.id])
+
   // Someone else may have clocked a team member in or out since this phone
   // last looked — catch up whenever the panel is opened.
   useEffect(() => {

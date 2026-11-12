@@ -225,6 +225,7 @@ export default function UserTimesheetsReportPage() {
                             <p className="text-xs text-gray-400">
                               {s.clocked_in_by_profile?.full_name ? `In by ${s.clocked_in_by_profile.full_name}` : ''}
                               {s.clocked_out_by_profile?.full_name ? ` · Out by ${s.clocked_out_by_profile.full_name}` : ''}
+                              {s.auto_clocked_out ? ' · Out automatically' : ''}
                             </p>
                             <TeamShiftAdjustedNote shift={s} />
                             {isAdmin && (
@@ -243,6 +244,7 @@ export default function UserTimesheetsReportPage() {
                             {s.clocked_out_by && s.clocked_out_by !== s.technician_id && (
                               <p className="text-xs text-amber-600">Clocked out by {s.clocked_out_by_profile?.full_name || 'admin'}</p>
                             )}
+                            {s.auto_clocked_out && <p className="text-xs text-amber-600">Clocked out automatically</p>}
                             <AdjustedNote shift={s} />
                             {isAdmin && (
                               <button type="button" onClick={() => setEditing(s)} className="text-xs font-semibold text-blue-600 hover:text-blue-700">

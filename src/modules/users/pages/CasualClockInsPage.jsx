@@ -309,6 +309,7 @@ export default function CasualClockInsPage() {
                                     {teamPlace(s)}
                                     {s.clocked_in_by_profile?.full_name ? ` · In by ${s.clocked_in_by_profile.full_name}` : ''}
                                     {s.clock_out && s.clocked_out_by_profile?.full_name ? ` · Out by ${s.clocked_out_by_profile.full_name}` : ''}
+                                    {s.clock_out && s.auto_clocked_out ? ' · Out automatically' : ''}
                                   </p>
                                   <TeamShiftAdjustedNote shift={s} />
                                 </div>

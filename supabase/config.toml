@@ -447,3 +447,15 @@ enabled = true
 verify_jwt = false
 import_map = "./functions/payfast-itn/deno.json"
 entrypoint = "./functions/payfast-itn/index.ts"
+
+[functions.send-push]
+enabled = true
+# send-push has two callers. Signed-in people send their Supabase login and the
+# function checks it itself (adminClient.auth.getUser). The database's 17:00
+# auto clock-out sends no login at all — only the x-cron-secret header — so
+# gateway-level JWT verification must stay off here or its alerts are rejected
+# with 401 before the handler runs. Without this explicit section a plain
+# `supabase functions deploy` falls back to verify_jwt = true (what bit the
+# PayFast webhook on 2026-09-08).
+verify_jwt = false
+entrypoint = "./functions/send-push/index.ts"

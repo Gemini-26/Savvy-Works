@@ -25,7 +25,10 @@ self.addEventListener('push', event => {
       badge: '/pwa-64x64.png',
       data: { link: data.link || '/' },
       requireInteraction: true,
-      vibrate: [200, 100, 200],
+      // An urgent alert (the automatic clock-out) buzzes for longer and sounds
+      // again even if a pop-up with the same tag is already showing.
+      vibrate: data.urgent ? [800, 200, 800, 200, 800, 200, 800] : [200, 100, 200],
+      renotify: !!data.urgent,
     })
   })())
 })

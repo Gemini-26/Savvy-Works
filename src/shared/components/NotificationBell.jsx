@@ -6,12 +6,17 @@ import { useCurrentUser } from '../../hooks/useCurrentUser'
 import { fetchMyNotifications, fetchUnreadCount, markNotificationRead, markAllNotificationsRead } from '../services/notificationService'
 import { enableAlerts, notificationPermission, setUpPush, showSystemNotification } from '../services/pushService'
 import { enableNativeAlerts, nativePushPermission, nativePushReady, setUpNativePush } from '../services/nativePushService'
-import { installSoundUnlock, isSoundOn, playNotificationSound, setSoundOn, unlockSound } from '../utils/notificationSound'
+import { notifyWorkShiftChanged } from '../services/workShiftService'
+import { notifyTeamShiftChanged } from '../services/teamShiftService'
+import { installSoundUnlock, isSoundOn, playAlarmSound, playNotificationSound, setSoundOn, stopAlarmSound, unlockSound } from '../utils/notificationSound'
 import { formatDateRelative, formatTime } from '../utils/formatDate'
 import NotificationToasts from './NotificationToasts'
 
 const POLL_MS = 30000
 const MAX_TOASTS = 4
+// An urgent alert that turns up this long after it was written (a phone that was
+// asleep, a dropped connection) is shown quietly instead of sounding the siren.
+const ALARM_FRESH_MS = 15 * 60 * 1000
 const PROMPT_KEY = 'savvy-alert-prompt-done'
 const PROMPT_ID = 'enable-alerts-prompt'
 
@@ -40,6 +45,8 @@ export default function NotificationBell() {
   // Ids already announced, so a row that arrives live and then again on the
   // next refresh only makes a noise once.
   const seen = useRef(new Set())
+  // Toasts currently showing the red "urgent" card.
+  const alarmIds = useRef(new Set())
   // react-router hands back a new navigate() on every route change; the live
   // subscription below must not be torn down and rebuilt each time, so the
   // callbacks reach it through a ref.
@@ -50,6 +57,9 @@ export default function NotificationBell() {
 
   const dismissToast = useCallback(id => {
     if (id === PROMPT_ID) rememberPromptAnswered()
+    // Dismissing the red card silences the siren; an ordinary toast fading away
+    // must not cut it short.
+    if (alarmIds.current.delete(id)) stopAlarmSound()
     setToasts(prev => prev.filter(t => t.id !== id))
   }, [])
 
@@ -59,20 +69,34 @@ export default function NotificationBell() {
 
   // New unread notifications: chime, an on-screen card, and — if this tab is
   // in the background — a system pop-up in the notification bar.
+  //
+  // An urgent one (the automatic 17:00 clock-out) is louder: the siren instead
+  // of the chime, and a red card that stays until it is dismissed. It also means
+  // the database just changed this person's clock, so the clock widgets are told
+  // to look again — otherwise the floating button would keep ticking.
   const announce = useCallback(rows => {
     const fresh = rows.filter(r => !seen.current.has(r.id))
     fresh.forEach(r => seen.current.add(r.id))
     const unreadFresh = fresh.filter(r => !r.is_read)
     if (unreadFresh.length === 0) return
 
-    playNotificationSound()
-    const shown = unreadFresh.slice(0, 3)
+    if (unreadFresh.some(r => r.urgent)) {
+      notifyWorkShiftChanged()
+      notifyTeamShiftChanged()
+    }
+    const isAlarm = r => !!r.urgent && Date.now() - new Date(r.created_at || Date.now()).getTime() < ALARM_FRESH_MS
+    const ordered = [...unreadFresh].sort((a, b) => Number(isAlarm(b)) - Number(isAlarm(a)))
+
+    if (ordered.some(isAlarm)) playAlarmSound()
+    else playNotificationSound()
+    const shown = ordered.slice(0, 3)
+    shown.filter(isAlarm).forEach(r => alarmIds.current.add(r.id))
     setToasts(prev => [
-      ...shown.map(r => ({ id: r.id, kind: 'notification', title: r.title, body: r.body, link: r.link })),
+      ...shown.map(r => ({ id: r.id, kind: isAlarm(r) ? 'alarm' : 'notification', title: r.title, body: r.body, link: r.link })),
       ...prev,
     ].slice(0, MAX_TOASTS))
     if (document.hidden) {
-      shown.forEach(r => showSystemNotification(r, () => openLink(r.link)).catch(() => {}))
+      shown.forEach(r => showSystemNotification({ ...r, urgent: isAlarm(r) }, () => openLink(r.link)).catch(() => {}))
     }
   }, [openLink])
 

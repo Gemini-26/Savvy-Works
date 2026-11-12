@@ -89,7 +89,9 @@ async function fetchShiftEvents(profileId) {
         id: `clockout-${row.id}`,
         category: 'clock',
         label: 'Clocked out for the day',
-        detail: forcedByOther ? `Clocked out by ${row.clocked_out_by_profile?.full_name || 'admin'}` : null,
+        detail: forcedByOther
+          ? `Clocked out by ${row.clocked_out_by_profile?.full_name || 'admin'}`
+          : row.auto_clocked_out ? 'Clocked out automatically' : null,
         at: row.clock_out,
       })
     }
