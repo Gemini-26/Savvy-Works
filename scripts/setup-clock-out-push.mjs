@@ -43,10 +43,9 @@ const run = (cmdArgs, label) => {
   // shell. Nothing secret is ever in these arguments (files carry it), so
   // there is nothing for the shell to mangle.
   const r = spawnSync('npx', cmdArgs, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' })
-  if (r.status !== 0) {
-    console.error(`\n❌ Failed: ${label}\n`)
-    process.exit(1)
-  }
+  // Throws rather than exiting, so the temp files below are always cleaned up
+  // (process.exit() would skip the "finally" that deletes them).
+  if (r.status !== 0) throw new Error(label)
 }
 
 // send-push reads notifications.urgent, which arrives with the migrations. The
@@ -62,13 +61,18 @@ if (!/"n":\s*"?1"?/.test(probe.stdout || '')) {
   process.exit(1)
 }
 
-// Names start with ".env." so .gitignore already covers them.
-const tmpEnv = path.join(root, `.env.clockout-secret.${process.pid}.tmp`)
-const tmpSql = path.join(root, `.env.clockout-vault.${process.pid}.tmp`)
+// Names start with ".env." so .gitignore already covers them. They are passed
+// to the CLI by bare file name (it runs in the project folder): a full path
+// breaks the moment a folder name has a space in it, like "19 May 2026".
+const tmpEnvName = `.env.clockout-secret.${process.pid}.tmp`
+const tmpSqlName = `.env.clockout-vault.${process.pid}.tmp`
+const tmpEnv = path.join(root, tmpEnvName)
+const tmpSql = path.join(root, tmpSqlName)
+let failure = null
 try {
   console.log('1/3  Giving send-push the secret (value not printed)')
   fs.writeFileSync(tmpEnv, `CRON_SECRET=${secret}\n`, { mode: 0o600 })
-  run(['supabase', 'secrets', 'set', '--env-file', tmpEnv], 'set CRON_SECRET')
+  run(['supabase', 'secrets', 'set', '--env-file', tmpEnvName], 'set CRON_SECRET')
 
   console.log('\n2/3  Giving the database the same secret and the function address (Vault)')
   // One DO block = one statement, which is all `db query --linked` accepts.
@@ -80,14 +84,25 @@ begin
   perform vault.create_secret('${secret}', 'send_push_secret', 'Shared with send-push as CRON_SECRET');
 end $$;
 `, { mode: 0o600 })
-  run(['supabase', 'db', 'query', '--linked', '-f', tmpSql], 'store the secret in the vault')
+  run(['supabase', 'db', 'query', '--linked', '-f', tmpSqlName], 'store the secret in the vault')
+} catch (err) {
+  failure = err.message
 } finally {
   // Always remove them, including on a failed or interrupted run.
   for (const f of [tmpEnv, tmpSql]) if (fs.existsSync(f)) fs.rmSync(f, { force: true })
 }
+if (failure) {
+  console.error(`\n❌ Failed: ${failure}\n`)
+  process.exit(1)
+}
 
 console.log('\n3/3  Redeploying send-push so it picks the secret up')
-run(['supabase', 'functions', 'deploy', 'send-push'], 'deploy send-push')
+try {
+  run(['supabase', 'functions', 'deploy', 'send-push'], 'deploy send-push')
+} catch (err) {
+  console.error(`\n❌ Failed: ${err.message}\n`)
+  process.exit(1)
+}
 
 console.log(`
 ✅ Done. The database can now ask send-push to deliver alerts to phones and
