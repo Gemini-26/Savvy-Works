@@ -65,6 +65,55 @@ async function run() {
       })
       add('anon-numbers', 'Strangers cannot use the document-number counter', pass(r.status === 401 || r.status === 403), `HTTP ${r.status}`)
     } catch (e) { add('anon-numbers', 'Strangers cannot use the document-number counter', 'SKIP', e.message) }
+
+    // 3b. Policy signing links (team members sign without a login). The link page
+    //     must open nothing for a made-up secret, and a stranger must not be able
+    //     to sign as staff, make links, or read signatures and links directly.
+    const rpc = (name, body) => fetch(`${url}/rest/v1/rpc/${name}`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const NIL = '00000000-0000-0000-0000-000000000000'
+    try {
+      const r = await rpc('get_policy_by_link', { p_token: 'not-a-real-secret' })
+      if (r.status === 404) {
+        add('link-bogus', 'A made-up signing link opens nothing', 'SKIP', 'signing links are not installed yet (migration 20261118090000)')
+      } else {
+        const body = await r.text()
+        add('link-bogus', 'A made-up signing link opens nothing', pass(r.status === 400 && /not valid/i.test(body)), `HTTP ${r.status}`)
+      }
+    } catch (e) { add('link-bogus', 'A made-up signing link opens nothing', 'SKIP', e.message) }
+    try {
+      const calls = [
+        ['sign_policy_document', { p_document_id: NIL, p_signature: 'x', p_agreed: true }],
+        ['create_policy_sign_link', { p_document_id: NIL, p_team_member_id: NIL }],
+        ['sign_policy_for_team_member', { p_document_id: NIL, p_team_member_id: NIL, p_signature: 'x', p_agreed: true }],
+        ['team_policy_status', {}],
+      ]
+      const codes = []
+      for (const [name, body] of calls) codes.push((await rpc(name, body)).status)
+      // 404 = that function is not installed yet (migration 20261118090000 not run);
+      // every function that does exist must refuse a stranger.
+      const present = codes.filter(c => c !== 404)
+      if (!present.length) {
+        add('anon-sign', 'Strangers cannot sign as staff or make signing links', 'SKIP', 'none of these functions exist yet')
+      } else {
+        add('anon-sign', 'Strangers cannot sign as staff or make signing links', pass(present.every(c => c === 401 || c === 403)),
+          `HTTP ${codes.join(', ')}${present.length < codes.length ? ' (404 = not installed yet)' : ''}`)
+      }
+    } catch (e) { add('anon-sign', 'Strangers cannot sign as staff or make signing links', 'SKIP', e.message) }
+    try {
+      const out = {}
+      for (const t of ['policy_sign_links', 'policy_signatures', 'policy_documents']) {
+        const r = await fetch(`${url}/rest/v1/${t}?select=id`, { headers: { apikey: key, Authorization: `Bearer ${key}`, Range: '0-0', Prefer: 'count=exact' } })
+        const total = (r.headers.get('content-range') || '').split('/')[1]
+        out[t] = r.status === 401 || r.status === 403 ? 0 : (total === '*' || total === undefined ? 0 : Number(total))
+      }
+      const leaked = Object.entries(out).filter(([, n]) => n !== 0)
+      add('anon-policies', 'Nobody without a login can read signatures, documents or signing links', pass(leaked.length === 0),
+        leaked.length ? leaked.map(([t, n]) => `${t}=${n}`).join(', ') : 'all return 0 rows')
+    } catch (e) { add('anon-policies', 'Nobody without a login can read signatures, documents or signing links', 'SKIP', e.message) }
   } else {
     add('anon-read', 'Nobody without a login can read customers, jobs or leads', 'SKIP', 'no .env keys')
   }

@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { FileUp, X, AlertTriangle } from 'lucide-react'
 import PolicyContent from './PolicyContent'
 import FillInLinesPicker from './FillInLinesPicker'
+import { AudienceSelect, PeoplePicker } from './AudienceFields'
+import { pruneAudience, useAudienceChoices } from '../hooks/useAudienceChoices'
 import { docxToHtml, publishPolicy, titleFromFileName } from '../services/policyService'
 import { detectBlanks, persistableFields } from '../policyBlanks'
-import { AUDIENCE_LABELS } from '../policyStats'
+import { audienceArgs, audienceIsValid, audienceOf } from '../policyStats'
 
 const inputCls = 'w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
 
@@ -18,7 +20,11 @@ export default function PublishPolicyDialog({ replacing = null, onClose, onPubli
   const [fields, setFields] = useState([])     // the document's "______" lines, and which of them people fill in
   const [title, setTitle] = useState(replacing?.title || '')
   const [description, setDescription] = useState(replacing?.description || '')
-  const [audience, setAudience] = useState(replacing?.audience || 'all')
+  const [chosen, setAud] = useState(() => audienceOf(replacing))   // who has to sign it
+  const { choices, error: choicesError } = useAudienceChoices()
+  // A new version starts with the old version's people; anyone deactivated since
+  // is dropped (the database would refuse them).
+  const aud = useMemo(() => pruneAudience(chosen, choices), [chosen, choices])
   const [reading, setReading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -50,7 +56,7 @@ export default function PublishPolicyDialog({ replacing = null, onClose, onPubli
     setError(null)
     try {
       const id = await publishPolicy({
-        title, description, audience, html: parsed.html, fileName: file.name, replaces: replacing?.id ?? null,
+        title, description, ...audienceArgs(aud), html: parsed.html, fileName: file.name, replaces: replacing?.id ?? null,
         fillFields: persistableFields(fields),
       })
       onPublished(id)
@@ -104,10 +110,13 @@ export default function PublishPolicyDialog({ replacing = null, onClose, onPubli
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 mb-1">Who has to sign it</label>
-                  <select value={audience} onChange={e => setAudience(e.target.value)} className={inputCls}>
-                    {Object.entries(AUDIENCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
+                  <AudienceSelect value={aud} onChange={setAud} disabled={busy} />
                 </div>
+                {aud.audience === 'specific' && (
+                  <div className="sm:col-span-2">
+                    <PeoplePicker value={aud} onChange={setAud} choices={choices} error={choicesError} disabled={busy} />
+                  </div>
+                )}
               </div>
 
               {parsed.warnings.length > 0 && (
@@ -131,7 +140,7 @@ export default function PublishPolicyDialog({ replacing = null, onClose, onPubli
 
         <div className="px-5 py-4 border-t border-gray-100 flex gap-2 justify-end">
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600">Cancel</button>
-          <button type="button" disabled={!parsed || !title.trim() || busy} onClick={handlePublish}
+          <button type="button" disabled={!parsed || !title.trim() || !audienceIsValid(aud) || busy} onClick={handlePublish}
             className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white disabled:opacity-50">
             {busy ? 'Publishing…' : replacing ? `Publish version ${nextVersion}` : 'Publish & ask people to sign'}
           </button>

@@ -18,6 +18,8 @@ import MyProfilePage from '../modules/users/pages/MyProfilePage'
 import ProfileDocumentsPage from '../modules/users/pages/ProfileDocumentsPage'
 import MyPoliciesPage from '../modules/policies/pages/MyPoliciesPage'
 import PolicyReadPage from '../modules/policies/pages/PolicyReadPage'
+import PolicySignForTeamMemberPage from '../modules/policies/pages/PolicySignForTeamMemberPage'
+import PolicyLinkSignPage from '../modules/policies/pages/PolicyLinkSignPage'
 import NoProfileScreen from '../components/NoProfileScreen'
 
 export default function AppRoutes({ session }) {
@@ -84,6 +86,10 @@ export default function AppRoutes({ session }) {
           element={session ? <Navigate to="/" replace /> : <Login />}
         />
 
+        {/* A team member's one-off signing link. Open to anyone who holds the
+            link — signed in or not — and deliberately outside both layouts. */}
+        <Route path="/sign/:token" element={<PolicyLinkSignPage />} />
+
         {isTechnician ? (
           <Route path="/" element={<TechnicianLayout profile={profile} />}>
             <Route index element={<MyJobsPage profile={profile} />} />
@@ -94,6 +100,7 @@ export default function AppRoutes({ session }) {
             <Route path="profile/documents" element={<ProfileDocumentsPage profile={profile} />} />
             <Route path="profile/policies" element={<MyPoliciesPage profile={profile} />} />
             <Route path="profile/policies/:id" element={<PolicyReadPage profile={profile} />} />
+            <Route path="profile/policies/:id/for/:memberId" element={<PolicySignForTeamMemberPage profile={profile} />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         ) : (
@@ -106,6 +113,7 @@ export default function AppRoutes({ session }) {
             <Route path="profile/documents" element={<ProfileDocumentsPage profile={profile} />} />
             <Route path="profile/policies" element={<MyPoliciesPage profile={profile} />} />
             <Route path="profile/policies/:id" element={<PolicyReadPage profile={profile} />} />
+            <Route path="profile/policies/:id/for/:memberId" element={<PolicySignForTeamMemberPage profile={profile} />} />
 
             {/* Lets non-technician staff (admins) accept/attend/complete their
                 own appointment assignments through the exact same flow a

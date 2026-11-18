@@ -20,12 +20,17 @@ export default function SignedCopiesPanel({ data }) {
   const groups = useMemo(() => {
     const docs = new Map(data.docs.map(d => [d.id, d]))
     const people = new Map(data.people.map(p => [p.id, p]))
+    const members = new Map((data.teamMembers || []).map(m => [m.id, m]))
     const byPerson = new Map()
     for (const sig of data.signatures) {
-      const key = sig.profile_id || `name:${sig.signer_name}`
-      const person = sig.profile_id ? people.get(sig.profile_id) : null
+      const key = sig.profile_id || sig.team_member_id || `name:${sig.signer_name}`
+      const person = sig.profile_id ? people.get(sig.profile_id) : sig.team_member_id ? members.get(sig.team_member_id) : null
       if (!byPerson.has(key)) {
-        byPerson.set(key, { key, name: person?.full_name || sig.signer_name, role: person?.role || sig.signer_role || '', inactive: !person, items: [] })
+        byPerson.set(key, {
+          key, name: person?.full_name || sig.signer_name,
+          role: sig.team_member_id ? 'team member' : (person?.role || sig.signer_role || ''),
+          inactive: !person, items: [],
+        })
       }
       byPerson.get(key).items.push({ sig, doc: docs.get(sig.document_id) })
     }
@@ -113,7 +118,11 @@ export default function SignedCopiesPanel({ data }) {
                         </span>
                       )}
                     </p>
-                    <p className="text-xs text-gray-500">Signed {formatDateTime(sig.signed_at)}</p>
+                    <p className="text-xs text-gray-500">
+                      Signed {formatDateTime(sig.signed_at)}
+                      {sig.signing_method === 'in_person' ? ` · in person${sig.recorded_by_name ? `, recorded by ${sig.recorded_by_name}` : ''}` : ''}
+                      {sig.signing_method === 'link' ? ' · through a signing link' : ''}
+                    </p>
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <button type="button" disabled={busy || working} onClick={() => pdfs.view(sig.id)} className={btn}>

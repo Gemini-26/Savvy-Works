@@ -2,9 +2,11 @@ import { useRef, useState } from 'react'
 import { FileUp, X, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2, FileText } from 'lucide-react'
 import PolicyContent from './PolicyContent'
 import FillInLinesPicker from './FillInLinesPicker'
+import { AudienceSelect, PeoplePicker } from './AudienceFields'
+import { useAudienceChoices } from '../hooks/useAudienceChoices'
 import { docxToHtml, publishPolicies, titleFromFileName } from '../services/policyService'
 import { detectBlanks, persistableFields } from '../policyBlanks'
-import { AUDIENCE_LABELS } from '../policyStats'
+import { audienceArgs, audienceIsValid } from '../policyStats'
 
 const MAX_FILES = 25
 const inputCls = 'w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-gray-50 disabled:text-gray-500'
@@ -20,7 +22,8 @@ export default function AddPoliciesDialog({ existingTitles = [], onClose, onPubl
   const fileInput = useRef(null)
   const publishedIds = useRef([])
   const [rows, setRows] = useState([])
-  const [defaultAudience, setDefaultAudience] = useState('all')
+  const [defaultAudience, setDefaultAudience] = useState({ audience: 'all', profileIds: [], teamMemberIds: [] })
+  const { choices, error: choicesError } = useAudienceChoices()
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState(null)   // { type: 'error' | 'info', text }
   const [dragging, setDragging] = useState(false)
@@ -60,7 +63,7 @@ export default function AddPoliciesDialog({ existingTitles = [], onClose, onPubl
       fields: [],      // the document's "______" lines, and which of them people fill in
       title: titleFromFileName(file.name),
       description: '',
-      audience: defaultAudience,
+      aud: defaultAudience,   // who has to sign it: { audience, profileIds, teamMemberIds }
       error: null,
       open: false,
     }))
@@ -84,7 +87,7 @@ export default function AddPoliciesDialog({ existingTitles = [], onClose, onPubl
 
   function setAllAudiences(value) {
     setDefaultAudience(value)
-    setRows(rs => rs.map(r => (r.status === 'published' ? r : { ...r, audience: value })))
+    setRows(rs => rs.map(r => (r.status === 'published' ? r : { ...r, aud: value })))
   }
 
   const sendable = rows.filter(r => r.status === 'ready' || r.status === 'failed')
@@ -96,11 +99,12 @@ export default function AddPoliciesDialog({ existingTitles = [], onClose, onPubl
   const sameTitleInBatch = new Set(lowered.filter((t, i) => t && lowered.indexOf(t) !== i))
   const alreadyPublished = new Set(existingTitles.map(t => t.trim().toLowerCase()))
   const missingTitle = sendable.some(r => !r.title.trim())
-  const canPublish = sendable.length > 0 && !stillReading && !busy && !missingTitle && sameTitleInBatch.size === 0
+  const missingPeople = sendable.some(r => !audienceIsValid(r.aud))
+  const canPublish = sendable.length > 0 && !stillReading && !busy && !missingTitle && !missingPeople && sameTitleInBatch.size === 0
 
   async function handlePublish() {
     const items = sendable.map(r => ({
-      key: r.key, title: r.title.trim(), description: r.description.trim(), audience: r.audience, html: r.html, fileName: r.file.name,
+      key: r.key, title: r.title.trim(), description: r.description.trim(), ...audienceArgs(r.aud), html: r.html, fileName: r.file.name,
       fillFields: persistableFields(r.fields),
     }))
     setBusy(true)
@@ -171,13 +175,15 @@ export default function AddPoliciesDialog({ existingTitles = [], onClose, onPubl
           </div>
 
           {rows.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <label htmlFor="all-audience" className="text-xs font-medium text-gray-500">Who has to sign — apply to all:</label>
-              <select id="all-audience" value={defaultAudience} onChange={e => setAllAudiences(e.target.value)} disabled={busy}
-                className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50">
-                {Object.entries(AUDIENCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-              </select>
-              <span className="text-xs text-gray-400">You can still change it for any one document below.</span>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <label htmlFor="all-audience" className="text-xs font-medium text-gray-500">Who has to sign — apply to all:</label>
+                <div className="w-48"><AudienceSelect id="all-audience" value={defaultAudience} onChange={setAllAudiences} disabled={busy} /></div>
+                <span className="text-xs text-gray-400">You can still change it for any one document below.</span>
+              </div>
+              {defaultAudience.audience === 'specific' && (
+                <PeoplePicker value={defaultAudience} onChange={setAllAudiences} choices={choices} error={choicesError} disabled={busy} />
+              )}
             </div>
           )}
 
@@ -212,10 +218,13 @@ export default function AddPoliciesDialog({ existingTitles = [], onClose, onPubl
                         </div>
                         <div>
                           <label className="block text-[11px] font-medium text-gray-500 mb-0.5">Who has to sign it</label>
-                          <select value={row.audience} disabled={locked} onChange={e => patch(row.key, { audience: e.target.value })} className={inputCls}>
-                            {Object.entries(AUDIENCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                          </select>
+                          <AudienceSelect value={row.aud} disabled={locked} onChange={aud => patch(row.key, { aud })} />
                         </div>
+                        {row.aud.audience === 'specific' && (
+                          <div className="sm:col-span-3">
+                            <PeoplePicker value={row.aud} disabled={locked} onChange={aud => patch(row.key, { aud })} choices={choices} error={choicesError} />
+                          </div>
+                        )}
                         <div className="sm:col-span-3">
                           <label className="block text-[11px] font-medium text-gray-500 mb-0.5">Short description (optional)</label>
                           <input value={row.description} disabled={locked} onChange={e => patch(row.key, { description: e.target.value })} placeholder="What this document is for" className={inputCls} />

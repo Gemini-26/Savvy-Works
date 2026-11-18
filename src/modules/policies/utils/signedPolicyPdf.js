@@ -637,6 +637,10 @@ function drawRecord(pdf, flow, sig, signaturePic, answers) {
 
   const rows = [
     ['Signed by', [sig.signer_name, sig.signer_role ? `(${sig.signer_role})` : ''].filter(Boolean).join(' ')],
+    // A team member has no login, so how their signature was collected is part of the record.
+    ['How it was signed', sig.signing_method === 'in_person'
+      ? `In person on a phone${sig.recorded_by_name ? `, recorded by ${sig.recorded_by_name}` : ''}`
+      : sig.signing_method === 'link' ? 'Through a signing link sent to the signer' : ''],
     ['Date and time', when(sig.signed_at)],
     ['Document', `${sig.document_title}, version ${sig.document_version}`],
     ...answers.map(a => [a.label || `Line ${a.n}`, a.value]),

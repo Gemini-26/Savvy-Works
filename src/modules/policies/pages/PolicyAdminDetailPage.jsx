@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Bell, CheckCircle2, Download, Eye, X } from 'lucide-react'
+import { ArrowLeft, Bell, CheckCircle2, Download, Eye, Link2, Smartphone, X } from 'lucide-react'
 import PageContainer from '../../../shared/components/PageContainer.jsx'
 import ConfirmDialog from '../../../shared/components/ConfirmDialog'
 import { useCurrentUser } from '../../../hooks/useCurrentUser'
@@ -10,12 +10,15 @@ import ProgressBar from '../components/ProgressBar'
 import PolicyContent from '../components/PolicyContent'
 import PublishPolicyDialog from '../components/PublishPolicyDialog'
 import FillInLinesPicker from '../components/FillInLinesPicker'
+import SignLinkDialog from '../components/SignLinkDialog'
+import { AudienceSelect, PeoplePicker } from '../components/AudienceFields'
+import { pruneAudience, useAudienceChoices } from '../hooks/useAudienceChoices'
 import { pickerFields, persistableFields } from '../policyBlanks'
 import {
-  fetchPolicy, fetchPolicyOverviewData, fetchSignatureImage, remindPeople,
+  createSignLink, fetchPolicy, fetchPolicyOverviewData, fetchSignatureImage, remindPeople,
   setPolicyStatus, updatePolicyDetails, deletePolicy, POLICIES_CHANGED,
 } from '../services/policyService'
-import { buildOverview, AUDIENCE_LABELS } from '../policyStats'
+import { buildOverview, audienceArgs, audienceIsValid, audienceLabel, audienceOf } from '../policyStats'
 import { formatDateTime } from '../../../shared/utils/formatDate'
 
 const inputCls = 'w-full px-3 py-2 text-sm rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white'
@@ -44,7 +47,10 @@ function Modal({ title, onClose, children, wide }) {
 function EditDetails({ doc, signedCount, onClose, onSaved }) {
   const [title, setTitle] = useState(doc.title)
   const [description, setDescription] = useState(doc.description || '')
-  const [audience, setAudience] = useState(doc.audience)
+  const [chosen, setAud] = useState(() => audienceOf(doc))   // who has to sign it
+  const { choices, error: choicesError } = useAudienceChoices()
+  // People who have been deactivated since can no longer sign it; drop them.
+  const aud = useMemo(() => pruneAudience(chosen, choices), [chosen, choices])
   const [fields, setFields] = useState(() => pickerFields(doc.content_html, doc.fill_fields))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
@@ -56,7 +62,7 @@ function EditDetails({ doc, signedCount, onClose, onSaved }) {
     setError(null)
     try {
       await updatePolicyDetails(doc.id, {
-        title, description, audience,
+        title, description, ...audienceArgs(aud),
         ...(linesLocked || !fields.length ? {} : { fillFields: persistableFields(fields) }),
       })
       onSaved()
@@ -81,17 +87,18 @@ function EditDetails({ doc, signedCount, onClose, onSaved }) {
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1">Who has to sign it</label>
-          <select value={audience} onChange={e => setAudience(e.target.value)} className={inputCls}>
-            {Object.entries(AUDIENCE_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
+          <AudienceSelect value={aud} onChange={setAud} disabled={busy} />
         </div>
+        {aud.audience === 'specific' && (
+          <PeoplePicker value={aud} onChange={setAud} choices={choices} error={choicesError} disabled={busy} />
+        )}
         <FillInLinesPicker
           fields={fields} onChange={setFields} disabled={linesLocked || busy}
           note={linesLocked ? 'Someone has already signed this document, so its fill-in lines can no longer be changed. Upload a new version to change them.' : null}
         />
         <div className="flex gap-2 justify-end pt-1">
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600">Cancel</button>
-          <button type="button" disabled={busy || !title.trim()} onClick={save} className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white disabled:opacity-50">
+          <button type="button" disabled={busy || !title.trim() || !audienceIsValid(aud)} onClick={save} className="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 text-white disabled:opacity-50">
             {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
@@ -99,6 +106,11 @@ function EditDetails({ doc, signedCount, onClose, onSaved }) {
     </Modal>
   )
 }
+
+// How a team member's signature was collected.
+const signingMethodText = sig => (sig.signing_method === 'link'
+  ? 'Through a signing link sent to them'
+  : `In person on a phone${sig.recorded_by_name ? `, recorded by ${sig.recorded_by_name}` : ''}`)
 
 const pdfBtn = 'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold border border-gray-300 text-gray-700 bg-white hover:border-blue-300 hover:text-blue-700 disabled:opacity-50'
 
@@ -123,6 +135,9 @@ function SignatureModal({ signatureId, pdfs, onClose }) {
           <img src={sig.signature_image} alt={`Signature of ${sig.signer_name}`} className="w-full max-h-48 object-contain bg-white border border-gray-200 rounded-lg p-2" />
           <dl className="text-sm grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5">
             <dt className="text-gray-500">Signed by</dt><dd className="font-semibold text-gray-900">{sig.signer_name}</dd>
+            {sig.signing_method && sig.signing_method !== 'self' && (
+              <><dt className="text-gray-500">How</dt><dd className="text-gray-900">{signingMethodText(sig)}</dd></>
+            )}
             <dt className="text-gray-500">Date &amp; time</dt><dd className="text-gray-900">{formatDateTime(sig.signed_at)}</dd>
             <dt className="text-gray-500">Document</dt><dd className="text-gray-900">{sig.document_title} (version {sig.document_version})</dd>
             {Array.isArray(sig.field_answers) && sig.field_answers.map(a => (
@@ -157,7 +172,7 @@ export default function PolicyAdminDetailPage() {
   const [error, setError] = useState(null)
   const [notice, setNotice] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [dialog, setDialog] = useState(null)   // 'preview' | 'edit' | 'version' | 'archive' | 'delete' | { signatureId }
+  const [dialog, setDialog] = useState(null)   // 'preview' | 'edit' | 'version' | 'archive' | 'delete' | { signatureId } | { signLink: { person, link } }
   const pdfs = useSignedPdfs()
 
   const load = useCallback(() => {
@@ -196,6 +211,20 @@ export default function PolicyAdminDetailPage() {
     try { await fn() } catch (err) { setError(err.message || 'Something went wrong') } finally { setBusy(false) }
   }
 
+  // A one-off signing link for a team member. The dialog opens straight away and
+  // fills in when the link is ready.
+  async function makeLink(person) {
+    setError(null)
+    setDialog({ signLink: { person, link: null } })
+    try {
+      const link = await createSignLink(id, person.id)
+      setDialog({ signLink: { person, link } })
+    } catch (err) {
+      setDialog(null)
+      setError(err.message || 'Could not make the link')
+    }
+  }
+
   if (userLoading) return <PageContainer><p className="text-sm text-gray-400">Loading…</p></PageContainer>
   if (!profile || !isAdmin) return <PageContainer><p className="text-sm text-gray-600">Only admins can manage policies and signatures.</p></PageContainer>
 
@@ -210,6 +239,9 @@ export default function PolicyAdminDetailPage() {
   const unsigned = row.rows.filter(r => !r.signature)
   const signed = row.rows.filter(r => r.signature)
   const isActive = doc.status === 'active'
+  // Reminders are notifications, so they only reach people with a login. Team
+  // members are reached in person or by link instead (buttons on their rows).
+  const remindable = unsigned.filter(r => !r.person.isTeamMember)
 
   return (
     <PageContainer>
@@ -219,7 +251,7 @@ export default function PolicyAdminDetailPage() {
           <div className="min-w-0">
             <h1 className="text-2xl font-bold text-gray-900 break-words">{doc.title}</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Version {doc.version} · {AUDIENCE_LABELS[doc.audience]} · published {formatDateTime(doc.created_at)}
+              Version {doc.version} · {audienceLabel(doc)} · published {formatDateTime(doc.created_at)}
               {doc.source_file_name ? ` · from ${doc.source_file_name}` : ''}
             </p>
             {doc.description && <p className="text-sm text-gray-600 mt-1">{doc.description}</p>}
@@ -262,12 +294,12 @@ export default function PolicyAdminDetailPage() {
           {unsigned.length > 0 ? (
             <div className="flex items-center gap-3">
               <span className="text-sm font-semibold text-red-600">{unsigned.length} not signed</span>
-              {isActive && (
+              {isActive && remindable.length > 0 && (
                 <button type="button" disabled={busy} onClick={() => run(async () => {
-                  const sent = await remindPeople(unsigned.map(r => r.person), data.docs, data.signatures)
+                  const sent = await remindPeople(remindable.map(r => r.person), data.docs, data.signatures)
                   setNotice(`Reminder sent to ${sent} ${sent === 1 ? 'person' : 'people'}.`)
                 })} className="flex items-center gap-1.5 text-xs font-semibold text-blue-600 disabled:opacity-50">
-                  <Bell size={13} /> Remind them
+                  <Bell size={13} /> {remindable.length === unsigned.length ? 'Remind them' : `Remind the ${remindable.length} with a login`}
                 </button>
               )}
             </div>
@@ -284,9 +316,21 @@ export default function PolicyAdminDetailPage() {
           {unsigned.length === 0 ? <p className="p-4 text-sm text-gray-500">No one.</p> : (
             <ul className="divide-y divide-gray-100">
               {unsigned.map(({ person }) => (
-                <li key={person.id} className="px-4 py-2.5 flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-gray-900">{person.full_name}</span>
-                  <span className="text-xs text-gray-500 capitalize">{person.role}</span>
+                <li key={person.id} className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-gray-900 min-w-0 break-words">{person.full_name}</span>
+                  {person.isTeamMember && isActive ? (
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <span className="text-xs text-gray-500">Team member</span>
+                      <Link to={`/profile/policies/${doc.id}/for/${person.id}`} className={pdfBtn}>
+                        <Smartphone size={13} /> Sign in person
+                      </Link>
+                      <button type="button" onClick={() => makeLink(person)} className={pdfBtn}>
+                        <Link2 size={13} /> Get link
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-500 capitalize">{person.role}</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -312,8 +356,14 @@ export default function PolicyAdminDetailPage() {
               {signed.map(({ person, signature }) => (
                 <li key={person.id} className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{person.full_name}</p>
-                    <p className="text-xs text-gray-500">{formatDateTime(signature.signed_at)}</p>
+                    <p className="text-sm font-medium text-gray-900">
+                      {person.full_name}
+                      {person.isTeamMember && <span className="ml-2 text-[11px] font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full align-middle">Team member</span>}
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      {formatDateTime(signature.signed_at)}
+                      {signature.signing_method && signature.signing_method !== 'self' ? ` · ${signingMethodText(signature)}` : ''}
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
                     <button type="button" disabled={pdfs.busyId === signature.id || !!pdfs.job} onClick={() => pdfs.view(signature.id)} className={pdfBtn}>
@@ -373,6 +423,7 @@ export default function PolicyAdminDetailPage() {
           onConfirm={() => run(async () => { await deletePolicy(doc.id); navigate('/files/policies') })} />
       )}
       {dialog?.signatureId && <SignatureModal signatureId={dialog.signatureId} pdfs={pdfs} onClose={() => setDialog(null)} />}
+      {dialog?.signLink && <SignLinkDialog person={dialog.signLink.person} link={dialog.signLink.link} onClose={() => setDialog(null)} />}
     </PageContainer>
   )
 }

@@ -8,7 +8,7 @@ import { appliesTo, progressFor } from '../policyStats'
 export const SIGN_STATEMENT = 'I have read and understood this document and I agree to follow it.'
 
 // Everything except the (large) body, for lists and counts.
-const LIST_COLS = 'id, title, description, audience, version, status, replaces_id, source_file_name, content_hash, created_at'
+const LIST_COLS = 'id, title, description, audience, audience_profile_ids, audience_team_member_ids, version, status, replaces_id, source_file_name, content_hash, created_at'
 
 // Images inside a Word file become inline data, so a document with big photos
 // can get huge. Refuse rather than make every page load slow.
@@ -28,7 +28,7 @@ export async function fetchMyPolicies(profile) {
 
   const sigByDoc = new Map((sigsRes.data || []).map(s => [s.document_id, s]))
   const items = (docsRes.data || [])
-    .filter(d => appliesTo(d, profile.role))
+    .filter(d => appliesTo(d, profile))
     .map(doc => ({ doc, signature: sigByDoc.get(doc.id) || null }))
   const signed = items.filter(i => i.signature).length
   return { items, signed, total: items.length, outstanding: items.length - signed }
@@ -68,6 +68,98 @@ export async function signPolicy(documentId, signatureDataUrl, answers = null) {
   return data
 }
 
+// ── Team members (no login): in person, or through a link ────────────────────
+
+// In person: an admin or technician hands their phone to the team member, who
+// reads and signs. The signature is saved under the team member's name and
+// records who handed the phone over.
+export async function signForTeamMember(documentId, teamMemberId, signatureDataUrl, answers = null) {
+  const { data, error } = await supabase.rpc('sign_policy_for_team_member', {
+    p_document_id: documentId,
+    p_team_member_id: teamMemberId,
+    p_signature: signatureDataUrl,
+    p_agreed: true,
+    p_user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    p_answers: answers?.length ? answers : null,
+  })
+  if (error) throw error
+  notifyPoliciesChanged()
+  return data
+}
+
+// Which team members still have to sign what, for whoever is about to hand a
+// phone over. → { pending: [{ member, docs: [doc] }], rows, total, signed }
+// where `rows` is every { document_id, team_member_id, signed_at } the database reported.
+export async function fetchTeamSigningQueue() {
+  const { data: rows, error } = await supabase.rpc('team_policy_status')
+  if (error) throw error
+  const status = rows || []
+  if (!status.length) return { pending: [], rows: [], total: 0, signed: 0 }
+
+  const docIds = [...new Set(status.map(r => r.document_id))]
+  const memberIds = [...new Set(status.map(r => r.team_member_id))]
+  const [docsRes, membersRes] = await Promise.all([
+    supabase.from('policy_documents').select(LIST_COLS).in('id', docIds),
+    supabase.from('team_members').select('id, full_name, phone, role_title').in('id', memberIds),
+  ])
+  if (docsRes.error) throw docsRes.error
+  if (membersRes.error) throw membersRes.error
+  const docs = new Map((docsRes.data || []).map(d => [d.id, d]))
+  const members = new Map((membersRes.data || []).map(m => [m.id, m]))
+
+  const byMember = new Map()
+  for (const r of status) {
+    if (r.signed_at) continue
+    const doc = docs.get(r.document_id)
+    const member = members.get(r.team_member_id)
+    if (!doc || !member) continue
+    if (!byMember.has(member.id)) byMember.set(member.id, { member, docs: [] })
+    byMember.get(member.id).docs.push(doc)
+  }
+  const pending = [...byMember.values()].sort((a, b) => a.member.full_name.localeCompare(b.member.full_name))
+  for (const p of pending) p.docs.sort((a, b) => a.title.localeCompare(b.title))
+  return { pending, rows: status, total: status.length, signed: status.filter(r => r.signed_at).length }
+}
+
+// Admin: a one-off link that opens a single document for a single team member,
+// no login needed. The secret in it is shown once and never stored, so a new
+// link cancels the previous one. → { url, token, expiresAt, memberName, memberPhone, documentTitle }
+export async function createSignLink(documentId, teamMemberId) {
+  const { data, error } = await supabase.rpc('create_policy_sign_link', {
+    p_document_id: documentId,
+    p_team_member_id: teamMemberId,
+  })
+  if (error) throw error
+  return {
+    url: `${window.location.origin}/sign/${data.token}`,
+    token: data.token,
+    expiresAt: data.expires_at,
+    memberName: data.team_member_name,
+    memberPhone: data.team_member_phone,
+    documentTitle: data.document_title,
+  }
+}
+
+// The signing-link page. These work without a login.
+// → { state: 'open', signer_name, expires_at, document } | { state: 'signed', signer_name, document_title, signed_at }
+export async function fetchPolicyByLink(token) {
+  const { data, error } = await supabase.rpc('get_policy_by_link', { p_token: token })
+  if (error) throw error
+  return data
+}
+
+export async function signByLink(token, signatureDataUrl, answers = null) {
+  const { data, error } = await supabase.rpc('sign_policy_by_link', {
+    p_token: token,
+    p_signature: signatureDataUrl,
+    p_agreed: true,
+    p_user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+    p_answers: answers?.length ? answers : null,
+  })
+  if (error) throw error
+  return data
+}
+
 // The banner and counts elsewhere in the app listen for this and re-count.
 export const POLICIES_CHANGED = 'policies-changed'
 export function notifyPoliciesChanged() {
@@ -77,23 +169,39 @@ export function notifyPoliciesChanged() {
 // ── Admin: overview ──────────────────────────────────────────────────────────
 
 // Everything the admin screens need to count: every document, every signature
-// (without the image — those are fetched one at a time) and every active person.
+// (without the image — those are fetched one at a time), every active person and
+// every active team member.
 export async function fetchPolicyOverviewData() {
-  const [docsRes, sigsRes, peopleRes] = await Promise.all([
+  const [docsRes, sigsRes, peopleRes, teamRes] = await Promise.all([
     supabase.from('policy_documents').select(LIST_COLS).order('created_at', { ascending: false }),
-    supabase.from('policy_signatures').select('id, document_id, profile_id, signer_name, signed_at, document_version'),
+    supabase.from('policy_signatures').select('id, document_id, profile_id, team_member_id, signer_name, signer_role, signed_at, document_version, signing_method, recorded_by_name'),
     supabase.from('profiles').select('id, full_name, role, email').eq('is_active', true).order('full_name'),
+    supabase.from('team_members').select('id, full_name, phone').eq('is_active', true).order('full_name'),
   ])
   if (docsRes.error) throw docsRes.error
   if (sigsRes.error) throw sigsRes.error
   if (peopleRes.error) throw peopleRes.error
-  return { docs: docsRes.data || [], signatures: sigsRes.data || [], people: peopleRes.data || [] }
+  if (teamRes.error) throw teamRes.error
+  return { docs: docsRes.data || [], signatures: sigsRes.data || [], people: peopleRes.data || [], teamMembers: teamRes.data || [] }
+}
+
+// The people an admin can tick when a document is for specific people: every
+// active login, and every active team member. (Casual one-day helpers are made
+// inactive on purpose, so they are not offered.)
+export async function fetchAudienceChoices() {
+  const [peopleRes, teamRes] = await Promise.all([
+    supabase.from('profiles').select('id, full_name, role').eq('is_active', true).order('full_name'),
+    supabase.from('team_members').select('id, full_name, role_title').eq('is_active', true).order('full_name'),
+  ])
+  if (peopleRes.error) throw peopleRes.error
+  if (teamRes.error) throw teamRes.error
+  return { people: peopleRes.data || [], teamMembers: teamRes.data || [] }
 }
 
 export async function fetchSignatureImage(signatureId) {
   const { data, error } = await supabase
     .from('policy_signatures')
-    .select('id, signer_name, signature_image, signed_at, document_title, document_version, content_hash, statement, ip_address, field_answers')
+    .select('id, signer_name, signer_role, signature_image, signed_at, document_title, document_version, content_hash, statement, ip_address, field_answers, signing_method, recorded_by_name')
     .eq('id', signatureId)
     .maybeSingle()
   if (error) throw error
@@ -145,8 +253,12 @@ export const titleFromFileName = name => name.replace(/\.docx$/i, '').replace(/[
 // notification and the refresh event, for batches that send one combined
 // notification per person at the end (see publishPolicies). `fillFields` is
 // which of the document's blank lines people type into (see persistableFields
-// in policyBlanks); left out, the app's own guess is used.
-export async function publishPolicy({ title, description, audience, html, fileName, replaces = null, fillFields = null, quiet = false }) {
+// in policyBlanks); left out, the app's own guess is used. For audience
+// "specific", `audienceProfileIds` / `audienceTeamMemberIds` are the people ticked.
+export async function publishPolicy({
+  title, description, audience, audienceProfileIds = [], audienceTeamMemberIds = [],
+  html, fileName, replaces = null, fillFields = null, quiet = false,
+}) {
   const { data: id, error } = await supabase.rpc('publish_policy_document', {
     p_title: title,
     p_description: description || null,
@@ -154,6 +266,8 @@ export async function publishPolicy({ title, description, audience, html, fileNa
     p_content_html: cleanHtml(html),
     p_source_file_name: fileName || null,
     p_replaces: replaces,
+    p_audience_profiles: audienceProfileIds,
+    p_audience_team_members: audienceTeamMemberIds,
   })
   if (error) throw error
   if (fillFields) {
@@ -164,7 +278,7 @@ export async function publishPolicy({ title, description, audience, html, fileNa
   }
   if (quiet) return id
 
-  await notifyAudience({ id, title, audience }, replaces
+  await notifyAudience(audienceOfPublished({ id, title, audience, audienceProfileIds, audienceTeamMemberIds }), replaces
     ? `A new version of "${title}" needs your signature.`
     : `"${title}" needs your signature.`).catch(() => {})
   notifyPoliciesChanged()
@@ -181,7 +295,7 @@ export async function publishPolicies(items, onResult) {
   for (const item of items) {
     try {
       const id = await publishPolicy({ ...item, quiet: true })
-      published.push({ id, title: item.title, audience: item.audience })
+      published.push(audienceOfPublished({ id, ...item }))
       onResult?.(item.key, { id })
     } catch (err) {
       onResult?.(item.key, { error: err.message || 'Could not publish this document.' })
@@ -194,10 +308,28 @@ export async function publishPolicies(items, onResult) {
   return published
 }
 
+// The bits of a just-published document the notifications need, shaped like a
+// document row so appliesTo() can read it.
+function audienceOfPublished({ id, title, audience, audienceProfileIds = [], audienceTeamMemberIds = [] }) {
+  const specific = audience === 'specific'
+  return {
+    id, title, audience,
+    audience_profile_ids: specific ? audienceProfileIds : [],
+    audience_team_member_ids: specific ? audienceTeamMemberIds : [],
+  }
+}
+
 // `fillFields` left undefined leaves the document's fill-in lines alone; the
 // database refuses to change them once anyone has signed.
-export async function updatePolicyDetails(id, { title, description, audience, fillFields }) {
-  const changes = { title: title.trim(), description: description?.trim() || null, audience }
+export async function updatePolicyDetails(id, { title, description, audience, audienceProfileIds = [], audienceTeamMemberIds = [], fillFields }) {
+  const specific = audience === 'specific'
+  const changes = {
+    title: title.trim(),
+    description: description?.trim() || null,
+    audience,
+    audience_profile_ids: specific ? audienceProfileIds : [],
+    audience_team_member_ids: specific ? audienceTeamMemberIds : [],
+  }
   if (fillFields !== undefined) changes.fill_fields = fillFields
   const { error } = await supabase
     .from('policy_documents')
@@ -233,7 +365,7 @@ async function activePeople() {
 }
 
 async function notifyAudience(doc, body) {
-  const people = (await activePeople()).filter(p => appliesTo(doc, p.role))
+  const people = (await activePeople()).filter(p => appliesTo(doc, p))
   if (!people.length) return
   const rows = people.map(p => ({ user_id: p.id, title: 'Document to sign', body, link: `/profile/policies/${doc.id}` }))
   const { error } = await supabase.from('notifications').insert(rows)
@@ -243,7 +375,7 @@ async function notifyAudience(doc, body) {
 async function notifyBatch(docs) {
   const rows = []
   for (const person of await activePeople()) {
-    const mine = docs.filter(d => appliesTo(d, person.role))
+    const mine = docs.filter(d => appliesTo(d, person))
     if (!mine.length) continue
     rows.push(mine.length === 1
       ? { user_id: person.id, title: 'Document to sign', body: `"${mine[0].title}" needs your signature.`, link: `/profile/policies/${mine[0].id}` }
@@ -255,10 +387,12 @@ async function notifyBatch(docs) {
 }
 
 // Nudge the given people about the documents they still have to sign. One
-// notification each, however many they owe.
+// notification each, however many they owe. Team members have no login to
+// notify, so they are skipped — they are reached in person or by link instead.
 export async function remindPeople(people, docs, signatures) {
   let sent = 0
   for (const person of people) {
+    if (person.isTeamMember) continue
     const { outstanding } = progressFor(person, docs, signatures)
     if (!outstanding.length) continue
     const link = outstanding.length === 1 ? `/profile/policies/${outstanding[0].id}` : '/profile/policies'

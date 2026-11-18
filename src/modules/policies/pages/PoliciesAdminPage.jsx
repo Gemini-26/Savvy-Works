@@ -9,7 +9,7 @@ import ProgressBar from '../components/ProgressBar'
 import AddPoliciesDialog from '../components/AddPoliciesDialog'
 import SignedCopiesPanel from '../components/SignedCopiesPanel'
 import { fetchPolicyOverviewData, remindPeople, POLICIES_CHANGED } from '../services/policyService'
-import { buildOverview, percent, AUDIENCE_LABELS } from '../policyStats'
+import { buildOverview, percent, audienceLabel } from '../policyStats'
 import { formatDate } from '../../../shared/utils/formatDate'
 
 const TABS = ['Documents', 'By person', 'Signed copies']
@@ -72,7 +72,9 @@ export default function PoliciesAdminPage() {
 
   const active = overview?.byDoc.filter(d => d.doc.status === 'active') || []
   const older = overview?.byDoc.filter(d => d.doc.status !== 'active') || []
-  const owing = overview?.byPerson.filter(p => p.outstanding.length > 0) || []
+  // Reminders are notifications, so only people with a login can be reminded.
+  // Team members are reached in person or by link, from the document's page.
+  const owing = overview?.byPerson.filter(p => p.outstanding.length > 0 && !p.person.isTeamMember) || []
   const needle = search.trim().toLowerCase()
   const people = (overview?.byPerson || []).filter(p => !needle || p.person.full_name?.toLowerCase().includes(needle))
 
@@ -141,7 +143,7 @@ export default function PoliciesAdminPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-gray-900 break-words">{doc.title}</p>
-                      <p className="text-xs text-gray-500">Version {doc.version} · {AUDIENCE_LABELS[doc.audience]} · published {formatDate(doc.created_at)}</p>
+                      <p className="text-xs text-gray-500">Version {doc.version} · {audienceLabel(doc)} · published {formatDate(doc.created_at)}</p>
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-sm font-bold text-gray-900">{signed} of {total} signed</p>
@@ -199,11 +201,14 @@ export default function PoliciesAdminPage() {
                             </Link>
                           ))}
                     </div>
-                    {outstanding.length > 0 && (
+                    {outstanding.length > 0 && !person.isTeamMember && (
                       <button type="button" disabled={reminding === person.id} onClick={() => handleRemind([person])}
                         className="text-xs font-semibold text-blue-600 shrink-0 disabled:opacity-50">
                         {reminding === person.id ? 'Sending…' : 'Remind'}
                       </button>
+                    )}
+                    {outstanding.length > 0 && person.isTeamMember && (
+                      <span className="text-[11px] text-gray-400 shrink-0 sm:w-24 sm:text-right">No login — open a document to sign in person or send a link</span>
                     )}
                   </div>
                 ))}

@@ -9,7 +9,7 @@ import { fetchPolicy } from './policyService'
 // drawn signature, what was typed on the blank lines) and the document's frozen
 // wording — nothing is stored, so there is nothing to get out of step.
 
-const SIGNATURE_COLS = 'id, document_id, profile_id, signer_name, signer_role, signature_image, statement, document_title, document_version, content_hash, signed_at, ip_address, field_answers'
+const SIGNATURE_COLS = 'id, document_id, profile_id, team_member_id, signer_name, signer_role, signature_image, statement, document_title, document_version, content_hash, signed_at, ip_address, field_answers, signing_method, recorded_by_name'
 
 // Keep a few prepared documents around so "View PDF" twice, or a batch that
 // touches the same document again, doesn't re-read its pictures.
@@ -102,7 +102,7 @@ export async function buildSignedZip(entries, { grouping = 'by-person', onProgre
   const folders = new Map()
   const claimed = new Set()
   const folderFor = signature => {
-    const key = signature.profile_id || `name:${signature.signer_name}`
+    const key = signature.profile_id || signature.team_member_id || `name:${signature.signer_name}`
     if (!folders.has(key)) {
       const base = safeFileName(signature.signer_name, 'person')
       let name = base
